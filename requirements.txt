@@ -1,0 +1,6 @@
+py-cord[voice]==2.6.1
+python-dotenv
+pre-commit
+flake8
+black
+isort
