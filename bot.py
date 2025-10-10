@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 # Setup environment variables
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+COMMAND_PREFIX = os.getenv("COMMAND_PREFIX")
 
 
 # Setup loggers
@@ -45,7 +46,11 @@ intents.message_content = True
 intents.typing = True
 intents.members = True  # NOTE Member events, needed?
 
-bot = discord.Bot(intents=intents, description="A mediocre music bot")
+bot = discord.Bot(
+    command_prefix=commands.when_mentioned_or(COMMAND_PREFIX or "-"),
+    intents=intents,
+    description="A mediocre music bot",
+)
 
 # Load extensions/cogs
 for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
@@ -55,7 +60,7 @@ for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
 
     try:
         bot.load_extension(f"cogs.{extension_name}")
-        logger.info(f"Loaded extension '{extension_name}")
+        logger.info(f"Loaded extension '{extension_name}'")
     except Exception as e:
         exception = f"{type(e).__name__}: {e}"
         logger.error(f"Failed to load extension '{extension_name}'\n{exception}")
@@ -67,6 +72,8 @@ async def on_ready() -> None:
 
     Logs information. Only triggered once during runtime.
     """
+    await bot.sync_commands()
+
     assert bot.user is not None
     logger.info(f"Logged in as: {bot.user.name}")
     logger.info(f"Python version: {platform.python_version()}")
