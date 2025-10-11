@@ -11,8 +11,6 @@ logger = logging.getLogger("beatbob")
 
 TEST_GUILDS = [int(os.getenv("TESTGUILDID", 0))]
 
-print(TEST_GUILDS)
-
 
 class HelloWorld(commands.Cog):
     """A simple test cog"""
