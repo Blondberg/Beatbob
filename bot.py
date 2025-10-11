@@ -2,6 +2,7 @@ import datetime
 import logging
 import os
 import platform
+import traceback
 
 import discord
 from discord.ext import commands
@@ -94,7 +95,7 @@ async def on_connect() -> None:
 
 
 @bot.event
-async def on_application_command_completion(ctx: commands.Context) -> None:
+async def on_application_command(ctx: commands.Context) -> None:
     """Runs when an application command has been completed.
 
     Does not run when it gets received.
@@ -120,9 +121,11 @@ async def on_application_command_error(
     # if isinstance(exception, commands.MissingPermissions):
     #     pass
 
-    exception = f"{type(error).__name__}: {error}"
+    tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+
     logger.warning(
-        f"Command '{ctx.command}' invoked in guild '{ctx.guild.name}' (ID: {ctx.guild.id}) by '{ctx.author}' (ID: {ctx.author.id}) got an error: \n{exception}"
+        f"Command '{ctx.command}' invoked in guild '{ctx.guild}' (ID: {ctx.guild.id}) "
+        f"by '{ctx.author}' (ID: {ctx.author.id}) got an error:\n{tb}"
     )
 
 
