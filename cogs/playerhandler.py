@@ -133,8 +133,12 @@ class PlayerHandler(commands.Cog):
         assert ctx.guild is not None
         await ctx.defer()
         player = self.get_player(ctx.guild)
-        await player.add_track(query)  # TODO Return info and Display it
-        await ctx.respond(f"🎵 Added to queue: `{query}`")
+        track_info = await player.add_track(query)  # TODO Return info and Display it
+
+        if "error" in track_info:
+            await ctx.respond(track_info.get("error", ""), ephemeral=True)
+        else:
+            await ctx.respond(f"🎵 Added to queue: `{query}`")
 
     @commands.slash_command(guilds=TEST_GUILDS, description="Pause music.")
     @ensure_same_voice_channel

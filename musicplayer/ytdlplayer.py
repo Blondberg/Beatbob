@@ -57,16 +57,19 @@ class YTDLPlayer(BasePlayer):
 
             await self.next_event.wait()  # wait until track finishes
 
-    async def add_track(self, query: str) -> None:
+    async def add_track(self, query: str) -> dict:
         """Add track to the queue
 
         Args:
             query (str): Queried track
         """
         track_info = await extract_youtube_track(query)
-        await self.queue.put(track_info)
 
-        logger.info(f"Queued track: {track_info.get('title')}")
+        if not "error" in track_info:
+            await self.queue.put(track_info)
+            logger.info(f"Queued track: {track_info.get('title')}")
+
+        return track_info
 
     async def connect(self, channel):
         """Connect voice client to a channel.
@@ -110,9 +113,9 @@ class YTDLPlayer(BasePlayer):
         """Set playback volume (0--200%).
 
         Args:
-            volume (int): Volume percentage (0--200%)
+            volume (int): Volume percentage (0--100%)
         """
-        self.volume = max(0.0, min(volume / 100.0, 2.0))
+        self.volume = max(0.0, min(volume / 100.0, 1.0))
         if self.source:
             self.source.volume = self.volume
         logger.info(f"Volume set to {volume}% for {self.guild.name}")
