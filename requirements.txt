@@ -37,3 +37,4 @@ typing_extensions==4.15.0
 virtualenv==20.34.0
 yarl==1.22.0
 yt-dlp==2025.9.26
+spotipy==2.25.1
