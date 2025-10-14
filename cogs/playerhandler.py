@@ -1,6 +1,5 @@
 import functools
 import logging
-import os
 
 import discord
 from discord import Embed
@@ -14,8 +13,6 @@ from musicplayer.ytdlplayer import YTDLPlayer
 load_dotenv()
 
 logger = logging.getLogger("beatbob")
-
-TEST_GUILDS = [int(os.getenv("TESTGUILDID", 0))]
 
 
 def ensure_same_voice_channel(func):
@@ -80,7 +77,7 @@ class PlayerHandler(commands.Cog):
         return self.players[guild.id]
 
     @commands.slash_command(
-        description="You want Beatbob in your life <3", guilds=TEST_GUILDS
+        description="You want Beatbob in your life <3",
     )
     async def join(self, ctx: discord.ApplicationContext):
         """Joins a voice channel.
@@ -94,28 +91,24 @@ class PlayerHandler(commands.Cog):
             ctx.author, discord.Member
         )  # NOTE Required to suppress pylance warning
         assert ctx.guild is not None
-        channel_id = 721836136015855722
-        channel = ctx.guild.get_channel(channel_id)
 
-        # if not ctx.author.voice:
-        #     return await ctx.respond("You must be in a voice channel.", ephemeral=True)
-        # channel = ctx.author.voice.channel
+        if not ctx.author.voice:
+            return await ctx.respond("You must be in a voice channel.", ephemeral=True)
+        channel = ctx.author.voice.channel
 
         player = self.get_player(ctx.guild)
 
         # Make sure it's not a stage channel
-        # if not isinstance(channel, discord.VoiceChannel):
-        #     return await ctx.respond(
-        #         "I can only join a regular voice channel.", ephemeral=True
-        #     )
+        if not isinstance(channel, discord.VoiceChannel):
+            return await ctx.respond(
+                "I can only join a regular voice channel.", ephemeral=True
+            )
 
         await player.connect(channel)
         await ctx.respond(f"Joined '{channel.name}'", ephemeral=True)
 
-    @commands.slash_command(
-        guilds=TEST_GUILDS, description="You no longer want Beatbob in your life </3"
-    )
-    # @ensure_same_voice_channel
+    @commands.slash_command(description="You no longer want Beatbob in your life </3")
+    @ensure_same_voice_channel
     async def leave(self, ctx: discord.ApplicationContext):
         """Leave the current voice channel
 
@@ -127,8 +120,8 @@ class PlayerHandler(commands.Cog):
         await ctx.respond("Goodbye o7")
         await player.disconnect()
 
-    @commands.slash_command(guilds=TEST_GUILDS, description="Play a song from YouTube.")
-    # @ensure_same_voice_channel
+    @commands.slash_command(description="Play a song from YouTube.")
+    @ensure_same_voice_channel
     async def play(self, ctx: discord.ApplicationContext, query: str):
         """Play music.
 
@@ -149,8 +142,8 @@ class PlayerHandler(commands.Cog):
             ephemeral=True,
         )
 
-    @commands.slash_command(guilds=TEST_GUILDS, description="Pause music.")
-    # @ensure_same_voice_channel
+    @commands.slash_command(description="Pause music.")
+    @ensure_same_voice_channel
     async def pause(self, ctx: discord.ApplicationContext):
         """Pause music
 
@@ -163,8 +156,8 @@ class PlayerHandler(commands.Cog):
         await player.pause()
         await ctx.respond("Paused.", ephemeral=True)
 
-    @commands.slash_command(guilds=TEST_GUILDS, description="Resume paused music.")
-    # @ensure_same_voice_channel
+    @commands.slash_command(description="Resume paused music.")
+    @ensure_same_voice_channel
     async def resume(self, ctx: discord.ApplicationContext):
         """Resume paused music.
 
@@ -179,10 +172,8 @@ class PlayerHandler(commands.Cog):
         await player.resume()
         await ctx.respond("Resumed.", ephemeral=True)
 
-    @commands.slash_command(
-        guilds=TEST_GUILDS, description="Stop playback. Skips current song and pauses."
-    )
-    # @ensure_same_voice_channel
+    @commands.slash_command(description="Stop playback. Skips current song and pauses.")
+    @ensure_same_voice_channel
     async def stop(self, ctx: discord.ApplicationContext):
         """Stop playback.
 
@@ -197,8 +188,8 @@ class PlayerHandler(commands.Cog):
         await player.stop()
         await ctx.respond("Stopped.", ephemeral=True)
 
-    @commands.slash_command(guilds=TEST_GUILDS, description="Skips the current song.")
-    # @ensure_same_voice_channel
+    @commands.slash_command(description="Skips the current song.")
+    @ensure_same_voice_channel
     async def skip(self, ctx: discord.ApplicationContext):
         """Skips the current song.
 
@@ -213,7 +204,8 @@ class PlayerHandler(commands.Cog):
         await player.skip()
         await ctx.respond("Skipped song.", ephemeral=True)
 
-    @commands.slash_command(guilds=TEST_GUILDS, description="Change volume.")
+    @commands.slash_command(description="Change volume.")
+    @ensure_same_voice_channel
     async def volume(self, ctx: discord.ApplicationContext, volume: int):
         """Sets volume for the bot (a percentage).
 
@@ -227,9 +219,8 @@ class PlayerHandler(commands.Cog):
         await player.set_volume(volume)
         await ctx.respond(f"Volume set to {volume}%")
 
-    @commands.slash_command(
-        guilds=TEST_GUILDS, description="Display the currently playing song."
-    )
+    @commands.slash_command(description="Display the currently playing song.")
+    @ensure_same_voice_channel
     async def nowplaying(self, ctx: discord.ApplicationContext):
         """Displays the currently plating song.
 
@@ -253,7 +244,8 @@ class PlayerHandler(commands.Cog):
 
         await ctx.respond("Now playing panel updated.", ephemeral=True)
 
-    @commands.slash_command(guilds=TEST_GUILDS, description="Display the current queue")
+    @commands.slash_command(description="Display the current queue")
+    @ensure_same_voice_channel
     async def queue(self, ctx: discord.ApplicationContext):
         """Display the current music queue.
 

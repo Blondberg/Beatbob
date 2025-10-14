@@ -73,7 +73,7 @@ async def on_ready() -> None:
 
     Logs information. Only triggered once during runtime.
     """
-    await bot.sync_commands()
+    # await bot.sync_commands()
 
     assert bot.user is not None
     logger.info(f"Logged in as: {bot.user.name}")

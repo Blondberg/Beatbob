@@ -1,9 +1,54 @@
+import functools
 from datetime import datetime
 
 import discord
 from discord.ext import commands
 
 from .timeconverter import s_to_hhmmss
+
+
+def ensure_same_voice_channel(func):
+    """Decorator to make sure that the user is in the same voice channel as the music bot.
+
+    Used to ensure that external users can't use the bot as a griefing tool.
+    """
+
+    @functools.wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        interaction: discord.Interaction = kwargs.get("interaction")
+        if interaction is None:
+            if len(args) >= 1:
+                interaction = args[1]  # first positional argument after self
+            else:
+                raise ValueError("No context found in decorator wrapper.")
+        assert isinstance(interaction.user, discord.Member)
+
+        # Check if the author is in a voice channel
+        if not interaction.user.voice:
+            return await interaction.respond(
+                "You must be in a voice channel.", ephemeral=True
+            )
+
+        # Get bot's voice client for this guild
+        voice_client = discord.utils.get(
+            self.bot.voice_clients, guild=interaction.guild
+        )
+        if not voice_client or not voice_client.channel:
+            return await interaction.respond(
+                "I am not connected to a voice channel", ephemeral=True
+            )
+
+        # Compare the channels
+        if interaction.user.voice.channel != voice_client.channel:
+            return await interaction.respond(
+                "You must be in the same voice channel as the bot to use that command",
+                ephemeral=True,
+            )
+
+        # All good if in the same voice channel
+        return await func(self, *args, **kwargs)
+
+    return wrapper
 
 
 class NowPlayingView(discord.ui.View):
