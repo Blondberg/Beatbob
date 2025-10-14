@@ -8,6 +8,7 @@ from discord.ext import commands
 from musicplayer.songextraction import extract_youtube_track
 
 from .baseplayer import BasePlayer
+from .now_playing_view import NowPlayingView
 
 logger = logging.getLogger("beatbob")
 
@@ -22,11 +23,14 @@ class YTDLPlayer(BasePlayer):
         self.bot = bot
         self.guild = guild
         self.voice_client: Optional[discord.VoiceClient] = None
-        self.volume: float = 1.0  # 1.0 = 100%
+        self.volume: float = 0.8  # 1.0 = 100%
         self.next_event = asyncio.Event()  # Flag to tell when next song can be played
         self.player_loop_task = None
         self.current_song = None
         self.queue = asyncio.Queue()
+        self.view: NowPlayingView | None = None
+        self.ctx: discord.ApplicationContext | None = None
+        self.is_playing = False
 
     async def player_loop(self) -> None:
         """Main playback loop."""
@@ -55,15 +59,31 @@ class YTDLPlayer(BasePlayer):
                 after=lambda e: self.bot.loop.call_soon_threadsafe(self.next_event.set),
             )
 
+            if self.ctx:
+                if not self.view:
+                    self.view = NowPlayingView(self.ctx, self, self.current_song)
+                    await self.view.create_message()
+                else:
+                    await self.view.update_message()
+
             await self.next_event.wait()  # wait until track finishes
 
-    async def add_track(self, query: str) -> dict:
+            self.current_song = None
+
+    async def update_view(self):
+        """Dynamically update view"""
+        if self.view is not None:
+            await self.view.update_message()
+
+    async def add_track(self, query: str, requested_by: int = 0) -> dict:
         """Add track to the queue
 
         Args:
             query (str): Queried track
         """
         track_info = await extract_youtube_track(query)
+        if requested_by:
+            track_info["requested_by"] = requested_by
 
         if not "error" in track_info:
             await self.queue.put(track_info)
@@ -106,11 +126,12 @@ class YTDLPlayer(BasePlayer):
 
     async def skip(self):
         """Skip current track"""
-        if self.voice_client and self.voice_client.is_playing():
+        if self.voice_client:
             self.voice_client.stop()
+            await self.update_view()
 
     async def set_volume(self, volume: int):
-        """Set playback volume (0--200%).
+        """Set playback volume (0--100%).
 
         Args:
             volume (int): Volume percentage (0--100%)
@@ -118,6 +139,9 @@ class YTDLPlayer(BasePlayer):
         self.volume = max(0.0, min(volume / 100.0, 1.0))
         if self.source:
             self.source.volume = self.volume
+
+        await self.update_view()
+
         logger.info(f"Volume set to {volume}% for {self.guild.name}")
 
     async def stop(self):
@@ -125,6 +149,7 @@ class YTDLPlayer(BasePlayer):
         while not self.queue.empty():
             self.queue.get_nowait()
         await self.skip()
+        await self.update_view()
 
     async def resume(self):
         """Resume song if paused.
@@ -134,6 +159,7 @@ class YTDLPlayer(BasePlayer):
         """
         if self.voice_client and self.voice_client.is_paused():
             self.voice_client.resume()
+            await self.update_view()
 
     async def pause(self):
         """Pause music if playing.
@@ -143,3 +169,4 @@ class YTDLPlayer(BasePlayer):
         """
         if self.voice_client and self.voice_client.is_playing():
             self.voice_client.pause()
+            await self.update_view()

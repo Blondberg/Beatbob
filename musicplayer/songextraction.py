@@ -78,6 +78,8 @@ def _extract_info_sync(query: str) -> dict:
                 "url": info.get("url"),
                 "webpage_url": info.get("webpage_url"),
                 "source": source,
+                "thumbnail_url": info.get("thumbnail", ""),
+                "duration": info.get("duration", 0),
             }
         except Exception as e:
             logger.error(f"Exception when extracting info with ytdlp {e}")

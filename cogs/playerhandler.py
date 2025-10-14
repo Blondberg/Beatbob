@@ -7,6 +7,8 @@ from discord import Embed
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from musicplayer.now_playing_view import NowPlayingView
+from musicplayer.timeconverter import s_to_hhmmss
 from musicplayer.ytdlplayer import YTDLPlayer
 
 load_dotenv()
@@ -91,26 +93,29 @@ class PlayerHandler(commands.Cog):
         assert isinstance(
             ctx.author, discord.Member
         )  # NOTE Required to suppress pylance warning
-
-        if not ctx.author.voice:
-            return await ctx.respond("You must be in a voice channel.", ephemeral=True)
-        channel = ctx.author.voice.channel
         assert ctx.guild is not None
+        channel_id = 721836136015855722
+        channel = ctx.guild.get_channel(channel_id)
+
+        # if not ctx.author.voice:
+        #     return await ctx.respond("You must be in a voice channel.", ephemeral=True)
+        # channel = ctx.author.voice.channel
 
         player = self.get_player(ctx.guild)
 
         # Make sure it's not a stage channel
-        if not isinstance(channel, discord.VoiceChannel):
-            return await ctx.respond(
-                "I can only join a regular voice channel.", ephemeral=True
-            )
+        # if not isinstance(channel, discord.VoiceChannel):
+        #     return await ctx.respond(
+        #         "I can only join a regular voice channel.", ephemeral=True
+        #     )
+
         await player.connect(channel)
-        await ctx.respond(f"Joined '{channel.name}'")
+        await ctx.respond(f"Joined '{channel.name}'", ephemeral=True)
 
     @commands.slash_command(
         guilds=TEST_GUILDS, description="You no longer want Beatbob in your life </3"
     )
-    @ensure_same_voice_channel
+    # @ensure_same_voice_channel
     async def leave(self, ctx: discord.ApplicationContext):
         """Leave the current voice channel
 
@@ -123,7 +128,7 @@ class PlayerHandler(commands.Cog):
         await player.disconnect()
 
     @commands.slash_command(guilds=TEST_GUILDS, description="Play a song from YouTube.")
-    @ensure_same_voice_channel
+    # @ensure_same_voice_channel
     async def play(self, ctx: discord.ApplicationContext, query: str):
         """Play music.
 
@@ -133,15 +138,19 @@ class PlayerHandler(commands.Cog):
         assert ctx.guild is not None
         await ctx.defer()
         player = self.get_player(ctx.guild)
-        track_info = await player.add_track(query)  # TODO Return info and Display it
+        player.ctx = ctx
+        track_info = await player.add_track(query, requested_by=ctx.author.id)
 
         if "error" in track_info:
-            await ctx.respond(track_info.get("error", ""), ephemeral=True)
-        else:
-            await ctx.respond(f"🎵 Added to queue: `{query}`")
+            return await ctx.respond(track_info.get("error", ""), ephemeral=True)
+
+        await ctx.respond(
+            f"🎵 Added to queue: `{track_info.get("title", "Unknown title")}`",
+            ephemeral=True,
+        )
 
     @commands.slash_command(guilds=TEST_GUILDS, description="Pause music.")
-    @ensure_same_voice_channel
+    # @ensure_same_voice_channel
     async def pause(self, ctx: discord.ApplicationContext):
         """Pause music
 
@@ -155,7 +164,7 @@ class PlayerHandler(commands.Cog):
         await ctx.respond("Paused.", ephemeral=True)
 
     @commands.slash_command(guilds=TEST_GUILDS, description="Resume paused music.")
-    @ensure_same_voice_channel
+    # @ensure_same_voice_channel
     async def resume(self, ctx: discord.ApplicationContext):
         """Resume paused music.
 
@@ -173,7 +182,7 @@ class PlayerHandler(commands.Cog):
     @commands.slash_command(
         guilds=TEST_GUILDS, description="Stop playback. Skips current song and pauses."
     )
-    @ensure_same_voice_channel
+    # @ensure_same_voice_channel
     async def stop(self, ctx: discord.ApplicationContext):
         """Stop playback.
 
@@ -189,7 +198,7 @@ class PlayerHandler(commands.Cog):
         await ctx.respond("Stopped.", ephemeral=True)
 
     @commands.slash_command(guilds=TEST_GUILDS, description="Skips the current song.")
-    @ensure_same_voice_channel
+    # @ensure_same_voice_channel
     async def skip(self, ctx: discord.ApplicationContext):
         """Skips the current song.
 
@@ -202,7 +211,7 @@ class PlayerHandler(commands.Cog):
 
         player = self.get_player(ctx.guild)
         await player.skip()
-        await ctx.respond("Skipped song.")
+        await ctx.respond("Skipped song.", ephemeral=True)
 
     @commands.slash_command(guilds=TEST_GUILDS, description="Change volume.")
     async def volume(self, ctx: discord.ApplicationContext, volume: int):
@@ -218,6 +227,32 @@ class PlayerHandler(commands.Cog):
         await player.set_volume(volume)
         await ctx.respond(f"Volume set to {volume}%")
 
+    @commands.slash_command(
+        guilds=TEST_GUILDS, description="Display the currently playing song."
+    )
+    async def nowplaying(self, ctx: discord.ApplicationContext):
+        """Displays the currently plating song.
+
+        Displayed as a Discord ui View with interactive buttons.
+
+        Args:
+            ctx (discord.ApplicationContext): Context in which the command was invoked under.
+        """
+        assert ctx.guild is not None
+
+        player = self.get_player(ctx.guild)
+
+        if not player.current_song:
+            return await ctx.respond("No song is currently playing", ephemeral=True)
+
+        if not player.view:
+            player.view = NowPlayingView(ctx, player, player.current_song)
+            await player.view.create_message()
+        else:
+            await player.view.create_message()
+
+        await ctx.respond("Now playing panel updated.", ephemeral=True)
+
     @commands.slash_command(guilds=TEST_GUILDS, description="Display the current queue")
     async def queue(self, ctx: discord.ApplicationContext):
         """Display the current music queue.
@@ -232,26 +267,30 @@ class PlayerHandler(commands.Cog):
             return await ctx.respond("The queue is currently empty.", ephemeral=True)
 
         embed = Embed(title="Music queue")
+        duration = 0
 
         # Currently playing track
         if player.current_song:
             title = player.current_song.get("title", "Unknown title")
             player.current_song.get("url")
             duration = player.current_song.get("duration", "Unknown")
+            duration_text = s_to_hhmmss(duration)
             embed.add_field(
-                name="Now Playing", value=f"[{title}]) — {duration}", inline=False
+                name="Now Playing", value=f"[{title}]) — {duration_text}", inline=False
             )
 
         if not player.queue.empty():
-            upcoming = list(player.queue._queue)[:1]  # peek
-            queue_text = ""
-            for i, track in enumerate(upcoming, start=1):
-                track_title = track.get("title", "Unknown title")
-                # track_url = track.get("url")
-                track_duration = track.get("duration", "Unknown")
-                queue_text += f"{i}. [{track_title}] — {track_duration}\n"
+            upcoming = list(player.queue._queue)[:10]
+            queue_lines = [
+                f"{i}. {track.get('title', 'Unknown title')} — {s_to_hhmmss(track.get("duration"))}"
+                for i, track in enumerate(upcoming, start=1)
+            ]
+            queue_text = "\n".join(queue_lines)
 
-            logger.info(queue_text)
+            # Truncate if needed
+            if len(queue_text) > 1024:
+                queue_text = queue_text[:1000] + "\n...and more!"
+
             embed.add_field(
                 name=f"Up Next ({len(upcoming)} tracks)", value=queue_text, inline=False
             )
