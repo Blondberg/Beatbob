@@ -1,5 +1,4 @@
 import logging
-import os
 
 import discord
 from discord.ext import commands
@@ -8,8 +7,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger("beatbob")
-
-TEST_GUILDS = [int(os.getenv("TESTGUILDID", 0))]
 
 
 class HelloWorld(commands.Cog):
@@ -20,7 +17,6 @@ class HelloWorld(commands.Cog):
 
     @commands.slash_command(
         name="helloworld",
-        guild_ids=TEST_GUILDS,
         description="Returns a friendly hello!",
     )
     async def helloworld(self, ctx: discord.ApplicationContext):
