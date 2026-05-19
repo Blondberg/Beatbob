@@ -1,27 +1,18 @@
-import logging
-
-import discord
 from discord.ext import commands
-from dotenv import load_dotenv
-
-load_dotenv()
-
-logger = logging.getLogger("beatbob")
+from discord import app_commands
+import discord
 
 
 class HelloWorld(commands.Cog):
-    """A simple test cog"""
-
-    def __init__(self, bot: discord.Bot):
+    def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
-    @commands.slash_command(
-        name="helloworld",
-        description="Returns a friendly hello!",
+    @app_commands.command(
+        name="helloworld", description="Make the bot say Hello World."
     )
-    async def helloworld(self, ctx: discord.ApplicationContext):
-        await ctx.respond("Hello!")
+    async def helloworld(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message("Hello world!")
 
 
-def setup(bot):
-    bot.add_cog(HelloWorld(bot))
+async def setup(bot: commands.Bot) -> None:
+    await bot.add_cog(HelloWorld(bot))

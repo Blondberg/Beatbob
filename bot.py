@@ -1,22 +1,24 @@
 import logging
 import datetime
 import os
-import traceback
+from discord import app_commands
+from typing import Union
 from dotenv import load_dotenv
 import platform
 import discord
+import traceback
+import wavelink
 from discord.ext import commands
-from discord.ext.commands import (
-    ExtensionAlreadyLoaded,
-    ExtensionNotFound,
-    ExtensionFailed,
-    NoEntryPointError,
-)
 
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 COMMAND_PREFIX = os.getenv("COMMAND_PREFIX")
+
+GUILD_ID = os.getenv("GUILD_ID")
+
+LAVALINK_URI = os.getenv("LAVALINK_URI")
+LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD")
 
 # Setup loggers
 logger = logging.getLogger("beatbob")
@@ -29,7 +31,7 @@ log_formatter = logging.Formatter(
 # File handler
 os.makedirs(os.path.dirname("logs/"), exist_ok=True)
 file_handler = logging.FileHandler(
-    filename=f"logs/beatbob_{datetime.datetime.now().strftime("%Y-%m-%d%T%H-%M-%S")}.log",
+    filename=f'logs/beatbob_{datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")}.log',
     encoding="utf-8",
     mode="w",
 )
@@ -45,80 +47,62 @@ logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
 
-# Configure intents
-intents = discord.Intents.default()
-intents.message_content = True
-intents.typing = True
+class BeatBob(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
 
-bot = commands.Bot(description="A mediocre music bot", intents=intents)
+        super().__init__(
+            command_prefix=COMMAND_PREFIX,
+            intents=intents,
+            description="A mediocre music bot",
+        )
 
-# Load extensions / cogs.
-for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
-    if not filename.endswith(".py") or filename.startswith("__"):
-        continue
+    async def setup_hook(self):
+        # load cogs
+        for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
+            if not filename.endswith(".py") or filename.startswith("__"):
+                continue
 
-    extension_name = filename[:-3]
+            extension_name = filename[:-3]
 
-    try:
-        bot.load_extension(f"cogs.{extension_name}")
-        logger.info(f"Loaded extension '{extension_name}'")
-    except (
-        ExtensionFailed,
-        ExtensionAlreadyLoaded,
-        ExtensionNotFound,
-        NoEntryPointError,
-    ) as e:
-        exception = f"{type(e).__name__}: {e}"
-        logger.error(f"Failed to load extension '{extension_name}'\n{exception}")
+            try:
+                await self.load_extension(f"cogs.{extension_name}")
+                logger.info(f"Loaded extension '{extension_name}'")
+            except Exception as e:
+                exception = f"{type(e).__name__}: {e}"
+                logger.error(
+                    f"Failed to load extension '{extension_name}'\n{exception}"
+                )
 
+        # Connect Lavalink
+        node = wavelink.Node(uri=LAVALINK_URI, password=LAVALINK_PASSWORD)
+        await wavelink.Pool.connect(nodes=[node], client=self)
 
-@bot.listen(once=True)
-async def on_ready() -> None:
-    assert bot.user is not None
-    logger.info(f"Logged in as: {bot.user.name}")
-    logger.info(f"Python version: {platform.python_version()}")
-    logger.info(f"System OS: {platform.system()} {platform.release}")
-    logger.info("Bot is ready!")
+        # Sync commands
+        try:
+            guild = discord.Object(id=GUILD_ID)
 
+            self.tree.copy_global_to(guild=guild)
+            synced = await self.tree.sync(guild=guild)
 
-@bot.event
-async def on_disconnect() -> None:
-    logger.warning("Disconnected from, or failed to connect to, Discord.")
+            print(f"Synced {len(synced)} commands")
+        except Exception as e:
+            logger.exception("Failed to sync commands.")
 
+    async def on_ready(self):
+        assert self.user is not None
+        logger.info(f"Logged in as: {self.user.name}")
+        logger.info(f"Python version: {platform.python_version()}")
+        logger.info(f"System OS: {platform.system()} {platform.release()}")
+        logger.info("Bot is ready!")
 
-@bot.event
-async def on_connect() -> None:
-    logger.info("Connected to Discord.")
+    async def on_disconnect(self) -> None:
+        logger.warning("Disconnected from, or failed to connect to, Discord.")
 
-
-@bot.event
-async def on_application_command(ctx: commands.Context) -> None:
-    """Log when an application command has been completed (not when received).
-
-    Args:
-        ctx (commands.Context): Context in which the command was invoked under.
-    """
-    logger.info(
-        f"Command '{ctx.command}' invoked in guild '{ctx.guild.name}' (ID: {ctx.guild.id}) by '{ctx.author.name}' (ID: {ctx.author.id})"
-    )
-
-
-@bot.event
-async def on_application_command_error(
-    ctx: commands.Context, error: discord.DiscordException
-) -> None:
-    """Log when an application command has an error.
-
-    Args:
-        ctx (commands.Context): Context in which the command was invoked under
-        error (discord.DiscordException): Exception associated to the error.
-    """
-    tb = "".join(traceback.format_exception(type(error), error, error.__traceback__))
-
-    logger.warning(
-        f"Command '{ctx.command}' invoked in guild '{ctx.guild}' (ID: {ctx.guild.id}) "
-        f"by '{ctx.author}' (ID: {ctx.author.id}) got an error:\n{tb}"
-    )
+    async def on_connect(self) -> None:
+        logger.info("Connected to Discord.")
 
 
+bot = BeatBob()
 bot.run(DISCORD_TOKEN)

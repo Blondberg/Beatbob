@@ -1,3 +1,12 @@
+# Lavalink plugins. Downloaded at runtime.
+plugins/
+
+# Log files
+logs/
+
+# Lavalink settings
+application.yml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
