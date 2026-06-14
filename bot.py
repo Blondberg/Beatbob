@@ -1,12 +1,9 @@
 import logging
 import datetime
 import os
-from discord import app_commands
-from typing import Union
 from dotenv import load_dotenv
 import platform
 import discord
-import traceback
 import wavelink
 from discord.ext import commands
 
@@ -20,7 +17,7 @@ GUILD_ID = os.getenv("GUILD_ID")
 LAVALINK_URI = os.getenv("LAVALINK_URI")
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD")
 
-# Setup loggers
+# # Setup loggers
 logger = logging.getLogger("beatbob")
 logger.setLevel(logging.INFO)
 log_formatter = logging.Formatter(
@@ -28,7 +25,7 @@ log_formatter = logging.Formatter(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-# File handler
+# # File handler
 os.makedirs(os.path.dirname("logs/"), exist_ok=True)
 file_handler = logging.FileHandler(
     filename=f'logs/beatbob_{datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")}.log',
@@ -37,12 +34,12 @@ file_handler = logging.FileHandler(
 )
 file_handler.setFormatter(log_formatter)
 
-# Console handler
+# # Console handler
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(log_formatter)
 
-# Add handlers
+# # Add handlers
 logger.addHandler(file_handler)
 logger.addHandler(console_handler)
 
@@ -51,6 +48,8 @@ class BeatBob(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
+
+        self.logger = logging.getLogger("beatbob")
 
         super().__init__(
             command_prefix=COMMAND_PREFIX,
@@ -68,10 +67,10 @@ class BeatBob(commands.Bot):
 
             try:
                 await self.load_extension(f"cogs.{extension_name}")
-                logger.info(f"Loaded extension '{extension_name}'")
+                self.logger.info(f"Loaded extension '{extension_name}'")
             except Exception as e:
                 exception = f"{type(e).__name__}: {e}"
-                logger.error(
+                self.logger.error(
                     f"Failed to load extension '{extension_name}'\n{exception}"
                 )
 
@@ -80,28 +79,28 @@ class BeatBob(commands.Bot):
         await wavelink.Pool.connect(nodes=[node], client=self)
 
         # Sync commands
-        try:
-            guild = discord.Object(id=GUILD_ID)
+        # try:
+        #     guild = discord.Object(id=GUILD_ID)
 
-            self.tree.copy_global_to(guild=guild)
-            synced = await self.tree.sync(guild=guild)
+        #     self.tree.copy_global_to(guild=guild)
+        #     synced = await self.tree.sync(guild=guild)
 
-            print(f"Synced {len(synced)} commands")
-        except Exception as e:
-            logger.exception("Failed to sync commands.")
+        #     print(f"Synced {len(synced)} commands")
+        # except Exception as e:
+        #     self.logger.exception("Failed to sync commands.")
 
     async def on_ready(self):
         assert self.user is not None
-        logger.info(f"Logged in as: {self.user.name}")
-        logger.info(f"Python version: {platform.python_version()}")
-        logger.info(f"System OS: {platform.system()} {platform.release()}")
-        logger.info("Bot is ready!")
+        self.logger.info(f"Logged in as: {self.user.name}")
+        self.logger.info(f"Python version: {platform.python_version()}")
+        self.logger.info(f"System OS: {platform.system()} {platform.release()}")
+        self.logger.info("Bot is ready!")
 
     async def on_disconnect(self) -> None:
-        logger.warning("Disconnected from, or failed to connect to, Discord.")
+        self.logger.warning("Disconnected from, or failed to connect to, Discord.")
 
     async def on_connect(self) -> None:
-        logger.info("Connected to Discord.")
+        self.logger.info("Connected to Discord.")
 
 
 bot = BeatBob()
