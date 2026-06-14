@@ -15,14 +15,16 @@ plugins:
       spotify: true
       youtube: true
     spotify:
-      clientId: ""
-      clientSecret: ""
+      clientId: "" # ADD CLIENT ID
+      clientSecret: "" # ADD CLIENT SECRET
+      playlistLoadLimit: 6
+      albumLoadLimit: 6
 
 lavalink:
   plugins:
   - dependency: "dev.lavalink.youtube:youtube-plugin:1.18.1"
     snapshot: false
-  - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.1"
+  - dependency: "com.github.topi314.lavasrc:lavasrc-plugin:4.8.2"
     repository: "https://maven.lavalink.dev/releases" # this is optional for lavalink v4.0.0-beta.5 or greater
     snapshot: false
   #    - dependency: "com.github.example:example-plugin:1.0.0" # required, the coordinates of your plugin
