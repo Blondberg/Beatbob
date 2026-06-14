@@ -11,24 +11,30 @@ class Owner(commands.Cog):
 
     @is_owner()
     @app_commands.command(name="sync", description="Sync bot commands.")
-    async def sync(self, interaction: discord.Interaction) -> None:
+    async def sync(
+        self, interaction: discord.Interaction, guild_id: str | None
+    ) -> None:
         await interaction.response.defer()
-        synced = await self.bot.tree.sync()
 
-        await interaction.followup.send(
-            f"Synced {len(synced)} commands globally", ephemeral=True
-        )
+        try:
+            if guild_id:
+                guild = discord.Object(id=guild_id)
 
-        # Sync commands
-        # try:
-        #     guild = discord.Object(id=GUILD_ID)
+                # self.bot.tree.copy_global_to(guild=guild)
+                synced = await self.bot.tree.sync(guild=guild)
+                await interaction.followup.send(
+                    f"Synced {len(synced)} commands to guild {guild_id}", ephemeral=True
+                )
 
-        #     self.tree.copy_global_to(guild=guild)
-        #     synced = await self.tree.sync(guild=guild)
+            else:
+                synced = await self.bot.tree.sync()
 
-        #     print(f"Synced {len(synced)} commands")
-        # except Exception as e:
-        #     self.logger.exception("Failed to sync commands.")
+                await interaction.followup.send(
+                    f"Synced {len(synced)} commands globally", ephemeral=True
+                )
+
+        except Exception as e:
+            self.bot.logger.exception("Failed to sync commands.")
 
 
 async def setup(bot: commands.Bot) -> None:
