@@ -21,4 +21,5 @@ venv/
 .pytype/
 
 .vscode/
+__pycache__
 
