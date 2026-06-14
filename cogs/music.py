@@ -92,6 +92,9 @@ class Music(commands.Cog):
     def get_guild_player(self, guild_id: int) -> GuildPlayer | None:
         return self.players.get(guild_id)
 
+    def remove_guild_player(self, guild_id: int) -> bool:
+        return self.players.pop(guild_id, None)
+
     def create_guild_player(self, guild_id, player: wavelink.Player) -> GuildPlayer:
         guild_player = GuildPlayer(player)
 
@@ -186,13 +189,14 @@ class Music(commands.Cog):
         player = await self.ensure_voice(interaction)
         if not player:
             return await interaction.followup.send(
-                embed=error_embed("Voice", "Join a voice channel first."),
+                embed=error_embed("Not in voice", "Join a voice channel first."),
                 ephemeral=True,
             )
 
         guild_player: GuildPlayer = self.get_or_create_guild_player(
             interaction.guild_id, player
         )
+
         if not guild_player:
             return
 
@@ -203,7 +207,8 @@ class Music(commands.Cog):
                 embed=error_embed(
                     title="Unable to find tracks",
                     text="Could not find any tracks with that query. Please try again.",
-                )
+                ),
+                ephemeral=True,
             )
 
         if isinstance(tracks, wavelink.Playlist):
@@ -255,7 +260,8 @@ class Music(commands.Cog):
             return
 
         await guild_player.stop()
-        await interaction.guild.voice_client.disconnect()
+        if self.remove_guild_player(interaction.guild_id):
+            await interaction.guild.voice_client.disconnect()
 
         await interaction.followup.send(
             embed=success_embed(title="Stopped", text="Playback stopped.")
