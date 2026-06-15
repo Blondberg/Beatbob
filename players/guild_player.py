@@ -16,7 +16,7 @@ class GuildPlayer:
         self.shuffle = False
         self.is_autoplay = False
 
-        self.volume = 30
+        self.volume = 10
 
     async def set_volume(self, volume: int) -> None:
         self.volume = max(0, min(volume, 100))
@@ -92,5 +92,4 @@ class GuildPlayer:
         if self.player.playing:
             await self.player.stop()
 
-        # Disconnect
         await self.player.disconnect()

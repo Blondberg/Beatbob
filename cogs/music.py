@@ -212,11 +212,11 @@ class Music(commands.Cog):
             )
 
         if isinstance(tracks, wavelink.Playlist):
-            added: int = await guild_player.add_playlist(tracks)
+            amount_added: int = await guild_player.add_playlist(tracks)
             await interaction.followup.send(
                 embed=success_embed(
                     title="Added songs",
-                    text=f"Added the playlist **`{tracks.name}`** ({added} songs) to the queue.",
+                    text=f"Added the playlist **`{tracks.name}`** ({amount_added} songs) to the queue.",
                 )
             )
         else:
@@ -400,13 +400,29 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
         if not guild_player:
-            await interaction.followup.send
             return
 
         await guild_player.rate(value)
 
         await interaction.followup.send(
             embed=success_embed(title="Rate", text=f"Rate changed to {value}.")
+        )
+
+    # -------------------------
+    # CURRENT
+    # -------------------------
+    @app_commands.command(name="current", description="See the currently playing song.")
+    async def current(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
+        if not guild_player:
+            return
+
+        current_song = guild_player.current
+
+        await interaction.followup.send(
+            embed=success_embed(title="Current song", text=f"{current_song.title}")
         )
 
 
