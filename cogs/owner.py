@@ -1,7 +1,6 @@
 from discord.ext import commands
 from discord import app_commands
 import discord
-from discord.ext.commands import has_permissions
 from discord.ext.commands import is_owner
 
 
@@ -20,7 +19,6 @@ class Owner(commands.Cog):
             if guild_id:
                 guild = discord.Object(id=guild_id)
 
-                # self.bot.tree.copy_global_to(guild=guild)
                 synced = await self.bot.tree.sync(guild=guild)
                 await interaction.followup.send(
                     f"Synced {len(synced)} commands to guild {guild_id}", ephemeral=True
@@ -34,7 +32,7 @@ class Owner(commands.Cog):
                 )
 
         except Exception as e:
-            self.bot.logger.exception("Failed to sync commands.")
+            print("Failed to sync commands.")
 
 
 async def setup(bot: commands.Bot) -> None:
