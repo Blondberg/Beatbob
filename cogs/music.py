@@ -1,4 +1,11 @@
-import logging
+# TODO Get rid of cyclic import
+from __future__ import annotations
+from typing import TYPE_CHECKING, cast, Callable, Awaitable
+
+if TYPE_CHECKING:
+    from bot import BeatBob
+
+
 from discord.ext import commands
 from players.guild_player import GuildPlayer
 from discord import app_commands
@@ -6,18 +13,15 @@ from utils.embeds import error_embed, success_embed
 from discord.app_commands.checks import has_permissions
 import discord
 import wavelink
-from typing import cast
-from dotenv import load_dotenv
-import os
-import functools
 from enum import Enum
-from utils.playingview import NowPlayingView
+from utils.views import (
+    NowPlayingView,
+    QueuedView,
+    TrackSkippedView,
+    TrackAddedView,
+    PlaylistAddedView,
+)
 import typing
-from bot import BeatBob
-
-load_dotenv()
-
-GUILD_ID = os.getenv("GUILD_ID")
 
 
 class AutoPlayMode(str, Enum):
@@ -26,51 +30,29 @@ class AutoPlayMode(str, Enum):
     queue = "queue"
 
 
-# def ensure_same_voice_channel(func):
-#     """Decorator to make sure the user is in the same voice channel as the bot"""
+def same_voice_channel(interaction: discord.Interaction) -> bool:
+    # Must be in a guild
+    if interaction.guild is None:
+        raise app_commands.NoPrivateMessage()
 
-#     @functools.wraps(func)
-#     async def wrapped(*args, **kwargs):
-#         interaction: discord.Interaction = kwargs.get("interaction")
+    if isinstance(interaction.user, discord.User):
+        raise app_commands.CheckFailure("No private messages.")
 
-#         if interaction is None:
-#             interaction = args[1]
+    # User must be in voice
+    if not interaction.user.voice or not interaction.user.voice.channel:
+        raise app_commands.CheckFailure("You must join a voice channel first.")
 
-#         # Check if user is connected to a voice channel
-#         if not interaction.user.voice:
-#             return await interaction.followup.send(
-#                 embed=error_embed(
-#                     title="Join a channel",
-#                     text="Please join a voice channel first.",
-#                 ),
-#                 ephemeral=True,
-#             )
+    guild_voice = interaction.guild.voice_client
 
-#         # Check if bot is connected
-#         voice_client = interaction.guild.voice_client
+    # Bot must be in voice
+    if not guild_voice or not guild_voice.channel:
+        raise app_commands.CheckFailure("I'm not conntected to a voice channel.")
 
-#         if not voice_client:
-#             return await interaction.followup.send(
-#                 embed=error_embed(
-#                     title="Not connected",
-#                     text="I am not connected to a voice channel",
-#                 ),
-#                 ephemeral=True,
-#             )
+    # User and bot must be in same voice
+    if interaction.user.voice.channel != guild_voice.channel:
+        raise app_commands.CheckFailure("You must be in the same voice channel as me.")
 
-#         # Check if author and bot are in same voice channel
-#         if interaction.user.voice.channel != voice_client.channel:
-#             return await interaction.followup.send(
-#                 embed=error_embed(
-#                     title="Different channels",
-#                     text="You must be in the same voice channel as the bot to use that command.",
-#                 ),
-#                 ephemeral=True,
-#             )
-
-#         return await func(*args, **kwargs)
-
-#     return wrapped
+    return True
 
 
 class Music(commands.Cog):
@@ -87,7 +69,7 @@ class Music(commands.Cog):
 
         voice = interaction.user.voice
 
-        if voice is None:
+        if voice is None or voice.channel is None:
             return None
 
         if interaction.guild is None:
@@ -100,9 +82,9 @@ class Music(commands.Cog):
             wavelink.Player, await voice.channel.connect(cls=wavelink.Player)
         )
 
-    def get_guild_player(self, guild_id: int | None) -> GuildPlayer | None:
+    def get_guild_player(self, guild_id: int) -> GuildPlayer | None:
         if guild_id is None:
-            return None
+            raise TypeError("Guild id cannot be None. Needs to be int.")
 
         return self.players.get(guild_id)
 
@@ -130,7 +112,7 @@ class Music(commands.Cog):
         return guild_player
 
     def get_or_create_guild_player(
-        self, guild_id: int | None, player: wavelink.Player
+        self, guild_id: int, player: wavelink.Player
     ) -> GuildPlayer:
         """Gets or creates a guild player if none exist for selected guild id.
 
@@ -198,7 +180,10 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_wavelink_track_exception(
         self, payload: wavelink.TrackExceptionEventPayload
-    ):
+    ) -> None:
+        if payload.player.guild is None:
+            return
+
         self.bot.logger.exception(
             f"Track exception in guild "
             f"{payload.player.guild.id}: "
@@ -209,8 +194,13 @@ class Music(commands.Cog):
     # TRACK STUCK
     # -------------------------
     @commands.Cog.listener()
-    async def on_wavelink_track_stuck(self, payload: wavelink.TrackStuckEventPayload):
+    async def on_wavelink_track_stuck(
+        self, payload: wavelink.TrackStuckEventPayload
+    ) -> None:
         """Skip to next track if current is stuck."""
+        if payload.player.guild is None:
+            return
+
         self.bot.logger.warning(f"Track stuck in guild " f"{payload.player.guild.id}")
 
         await payload.player.skip(force=True)
@@ -241,8 +231,10 @@ class Music(commands.Cog):
                 ephemeral=True,
             )
 
+        assert interaction.guild is not None  # Guild should be a guarantee
+
         guild_player: GuildPlayer = self.get_or_create_guild_player(
-            interaction.guild_id, player
+            interaction.guild.id, player
         )
 
         tracks: wavelink.Search = await wavelink.Playable.search(query)
@@ -260,23 +252,23 @@ class Music(commands.Cog):
             tracks.extras = {"requested_by": interaction.user.name}
 
             amount_added: int = await guild_player.add_playlist(tracks)
-            await interaction.followup.send(
-                embed=success_embed(
-                    title="Added songs",
-                    text=f"Added the playlist **`{tracks.name}`** ({amount_added} songs) to the queue.",
-                )
-            )
-        else:
-            track: wavelink.Playable = tracks[0]
-            track.extras = {"requested_by": interaction.user.global_name}
-            await guild_player.add_track(track)
-            await interaction.followup.send(
-                embed=success_embed(
-                    title="Added song", text=f"Added **`{track}`** to the queue."
+            return await interaction.followup.send(
+                view=PlaylistAddedView(
+                    tracks.name,
+                    tracks.url or "",
+                    tracks.extras.requested_by,
+                    amount_added,
                 )
             )
 
-        if not await guild_player.is_playing():
+        track: wavelink.Playable = tracks[0]
+        track.extras = {"requested_by": interaction.user.global_name}
+        await guild_player.add_track(track)
+        await interaction.followup.send(
+            view=TrackAddedView(track.title, track.uri or "", track.extras.requested_by)
+        )
+
+        if not guild_player.is_playing():
             await guild_player.play_next()
 
     # -------------------------
@@ -284,17 +276,24 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="skip", description="Skip a song")
+    @app_commands.check(same_voice_channel)
     async def skip(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild_id)
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
             return
 
-        skipped_track = await guild_player.skip()
-        if skipped_track:
+        track = await guild_player.skip()
+        if track is not None:
             await interaction.followup.send(
-                embed=success_embed(title="Skipped", text="Track skipped.")
+                view=TrackSkippedView(
+                    track.title,
+                    track.uri or "",
+                    interaction.user.global_name or "unknown",
+                )
             )
 
     # -------------------------
@@ -302,16 +301,20 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="stop", description="Stop music and disconnect.")
+    @app_commands.check(same_voice_channel)
     async def stop(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
+        assert interaction.guild is not None
 
-        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild_id)
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if not guild_player:
             return
 
         await guild_player.stop()
-        if self.remove_guild_player(interaction.guild_id):
-            await interaction.guild.voice_client.disconnect(force=False)
+
+        if interaction.guild.voice_client is not None:
+            if self.remove_guild_player(interaction.guild.id):
+                await interaction.guild.voice_client.disconnect(force=False)
 
         await interaction.followup.send(
             embed=success_embed(title="Stopped", text="Playback stopped.")
@@ -325,8 +328,10 @@ class Music(commands.Cog):
     async def pause(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.pause()
@@ -340,14 +345,37 @@ class Music(commands.Cog):
     async def resume(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.resume()
 
         await interaction.followup.send(
             embed=success_embed(title="Resumed", text="Resumed playback.")
+        )
+
+    # -------------------------
+    # QUEUE
+    # -------------------------
+    @app_commands.guild_only()
+    @app_commands.command(name="queue", description="View the current queue.")
+    async def queue(
+        self, interaction: discord.Interaction, page: int | None = 1
+    ) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+
+        if guild_player is None:
+            return
+
+        await interaction.followup.send(
+            view=QueuedView(guild_player.get_queue(), page_number=page or 1)
         )
 
     # -------------------------
@@ -359,18 +387,21 @@ class Music(commands.Cog):
     async def volume(
         self, interaction: discord.Interaction, volume: app_commands.Range[int, 0, 100]
     ) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.set_volume(volume)
 
         await interaction.followup.send(
             embed=success_embed(
-                title="Volume set", text=f"Volume set to {guild_player.volume}%."
-            )
+                title="Volume set",
+                text=f"Volume set to {guild_player.volume}%.",
+            ),
         )
 
     # -------------------------
@@ -383,8 +414,10 @@ class Music(commands.Cog):
     ) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.autoplay(mode)
@@ -402,8 +435,10 @@ class Music(commands.Cog):
         """Set the filter to a nightcore style."""
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.nightcore(value)
@@ -420,10 +455,11 @@ class Music(commands.Cog):
     async def pitch(self, interaction: discord.Interaction, value: float) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
-            return
+        assert interaction.guild is not None  # Guild should be a guarantee
 
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
+            return
         await guild_player.pitch(value)
 
         await interaction.followup.send(
@@ -438,8 +474,10 @@ class Music(commands.Cog):
     async def speed(self, interaction: discord.Interaction, value: float) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.speed(value)
@@ -456,8 +494,10 @@ class Music(commands.Cog):
     async def rate(self, interaction: discord.Interaction, value: float) -> None:
         await interaction.response.defer()
 
-        guild_player: GuildPlayer = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         await guild_player.rate(value)
@@ -472,18 +512,25 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="current", description="See the currently playing song.")
     async def current(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
-        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild_id)
-        if not guild_player:
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
             return
 
         current_song = guild_player.current
+
+        if current_song is None:
+            return await interaction.followup.send(
+                "No song is currently playing. Use `/play` to add something to the queue!",
+            )
 
         progress = await guild_player.get_progress()
 
         await interaction.followup.send(view=NowPlayingView(current_song, progress))
 
 
-async def setup(bot: commands.Bot) -> None:
+async def setup(bot: BeatBob) -> None:
     await bot.add_cog(Music(bot))

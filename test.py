@@ -1,10 +1,4 @@
-import wavelink
-import asyncio
+print(19 - 360818)
 
-
-async def main():
-    nodes = [wavelink.Node(uri="0.0.0.0:2333", password="youshallnotpass")]
-    await wavelink.Pool.connect(nodes=nodes)
-
-
-asyncio.run(main())
+# bar = foo().upper()
+# print(bar)

@@ -40,38 +40,45 @@ class GuildPlayer:
         """
         return await self.player.queue.put_wait(playlist)
 
-    async def get_progress(self) -> dict[str, int] | None:
+    async def get_progress(self) -> dict[str, int]:
         if self.player.current:
             return {
                 "position": self.player.position,
                 "length": self.player.current.length or 0,
             }
 
-        return None
+        return {
+            "position": 0,
+            "length": 0,
+        }
 
     async def play_next(self) -> None:
-        self.current = await self.player.play(
-            self.player.queue.get(), volume=self.volume
-        )
+        if self.player.queue.is_empty:
+            self.current = None
+            return
+
+        self.current = self.player.queue.get()
+
+        await self.player.play(self.current, volume=self.volume)
 
     async def skip(self) -> wavelink.Playable | None:
         return await self.player.skip(force=True)
 
-    async def stop(self):
+    async def stop(self) -> None:
         self.player.queue.clear()
         self.current = None
         await self.player.skip()
 
-    async def pause(self):
+    async def pause(self) -> None:
         await self.player.pause(True)
 
-    async def resume(self):
+    async def resume(self) -> None:
         await self.player.pause(False)
 
-    async def seek(self, position_s: int):
+    async def seek(self, position_s: int) -> None:
         await self.player.seek(position_s * 1000)
 
-    async def is_playing(self) -> bool:
+    def is_playing(self) -> bool:
         return self.player.playing
 
     async def autoplay(self, value: wavelink.AutoPlayMode) -> None:
@@ -94,12 +101,18 @@ class GuildPlayer:
         filters.timescale.set(speed=value)
         await self.player.set_filters(filters)
 
-    async def rate(self, value: float):
+    async def rate(self, value: float) -> None:
         filters: wavelink.Filters = self.player.filters
         filters.timescale.set(rate=value)
         await self.player.set_filters(filters)
 
-    async def cleanup(self):
+    def get_queue(self) -> wavelink.Queue:
+        return self.player.queue
+
+    def get_queue_size(self) -> int:
+        return self.player.queue.count
+
+    async def cleanup(self) -> None:
         # Clear queue
         self.player.queue.clear()
 

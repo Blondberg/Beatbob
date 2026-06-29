@@ -7,6 +7,7 @@ import discord
 import wavelink
 from discord.ext import commands
 
+# Fetch environment variables
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN", "")
@@ -17,9 +18,10 @@ GUILD_ID = os.getenv("GUILD_ID", "")
 LAVALINK_URI = os.getenv("LAVALINK_URI", "")
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
 
+
 # Setup loggers
 logger = logging.getLogger("beatbob")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 log_formatter = logging.Formatter(
     fmt="%(asctime)s :: %(levelname)-7s :: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
@@ -36,7 +38,7 @@ file_handler.setFormatter(log_formatter)
 
 # Console handler
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(log_formatter)
 
 # Add handlers
@@ -45,7 +47,7 @@ logger.addHandler(console_handler)
 
 
 class BeatBob(commands.Bot):
-    def __init__(self):
+    def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
 
@@ -57,8 +59,8 @@ class BeatBob(commands.Bot):
             description="A mediocre music bot",
         )
 
-    async def setup_hook(self):
-        # load cogs
+    async def setup_hook(self) -> None:
+        # Load cogs
         for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
             if not filename.endswith(".py") or filename.startswith("__"):
                 continue
@@ -67,18 +69,15 @@ class BeatBob(commands.Bot):
 
             try:
                 await self.load_extension(f"cogs.{extension_name}")
-                self.logger.info(f"Loaded extension '{extension_name}'")
-            except Exception as e:
-                exception = f"{type(e).__name__}: {e}"
-                self.logger.error(
-                    f"Failed to load extension '{extension_name}'\n{exception}"
-                )
+                self.logger.debug(f"Loaded extension '{extension_name}'")
+            except Exception:
+                self.logger.exception(f"Failed to load extension '{extension_name}'")
 
         # Connect Lavalink
         node = wavelink.Node(uri=LAVALINK_URI, password=LAVALINK_PASSWORD)
         await wavelink.Pool.connect(nodes=[node], client=self)
 
-    async def on_ready(self):
+    async def on_ready(self) -> None:
         assert self.user is not None
         self.logger.info(f"Logged in as: {self.user.name}")
         self.logger.info(f"Python version: {platform.python_version()}")
@@ -92,5 +91,6 @@ class BeatBob(commands.Bot):
         self.logger.info("Connected to Discord.")
 
 
-bot = BeatBob()
-bot.run(DISCORD_TOKEN)
+if __name__ == "__main__":
+    bot = BeatBob()
+    bot.run(DISCORD_TOKEN)

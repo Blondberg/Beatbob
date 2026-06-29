@@ -18,7 +18,7 @@ class Owner(commands.Cog):
         try:
             if guild_id:
                 guild = discord.Object(id=guild_id)
-
+                self.bot.tree.copy_global_to(guild=guild)
                 synced = await self.bot.tree.sync(guild=guild)
                 await interaction.followup.send(
                     f"Synced {len(synced)} commands to guild {guild_id}", ephemeral=True
