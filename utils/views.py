@@ -63,6 +63,12 @@ class NowPlayingView(discord.ui.LayoutView):
             self.progress["position"], self.progress["length"]
         )
 
+        requested_by = getattr(
+            self.now_playing.extras,
+            "requested_by",
+            "Autoplay",
+        )
+
         container: discord.ui.Container = discord.ui.Container(
             discord.ui.Section(
                 discord.ui.TextDisplay(
@@ -79,9 +85,7 @@ class NowPlayingView(discord.ui.LayoutView):
             discord.ui.TextDisplay(
                 content=f"{format_duration(self.progress.get('position') or 0)}  {self.progress_bar}  {format_duration(self.progress.get('length') or 0)}"
             ),
-            discord.ui.TextDisplay(
-                content=f"**Requested by: **{self.now_playing.extras.requested_by}\n"
-            ),
+            discord.ui.TextDisplay(content=f"**Requested by: **{requested_by}\n"),
             accent_color=discord.Color.blurple(),
         )
 
@@ -97,15 +101,15 @@ class QueuedView(discord.ui.LayoutView):
         *,
         timeout: float | None = None,
     ):
-        self.page_size = page_size
-
         super().__init__(timeout=timeout)
 
-        # Add all queued tracks within page to list
+        self.page_size = page_size
+
         self.tracks: list[wavelink.Playable] = [
             queue.peek(i) for i in range(queue.count)
         ]
 
+        # If no tracks exists in queue
         if not self.tracks:
             self.add_item(
                 discord.ui.Container(
@@ -126,8 +130,7 @@ class QueuedView(discord.ui.LayoutView):
         total_pages = max(1, math.ceil(len(queued_tracks) / page_size))
 
         # Clamp page into valid range
-        page_number = max(1, min(page_number, total_pages))
-        self.page_number = page_number
+        self.page_number = max(1, min(page_number, total_pages))
 
         start_index = (page_number - 1) * page_size
         end_index = start_index + page_size

@@ -1,6 +1,6 @@
 # TODO Get rid of cyclic import
 from __future__ import annotations
-from typing import TYPE_CHECKING, cast, Callable, Awaitable
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from bot import BeatBob
@@ -22,12 +22,6 @@ from utils.views import (
     PlaylistAddedView,
 )
 import typing
-
-
-class AutoPlayMode(str, Enum):
-    off = "off"
-    related = "related"
-    queue = "queue"
 
 
 def same_voice_channel(interaction: discord.Interaction) -> bool:
@@ -169,10 +163,10 @@ class Music(commands.Cog):
             return
 
         guild_player = self.get_guild_player(player.guild.id)
-        if not guild_player:
+        if guild_player is None:
             return
 
-        await guild_player.play_next()
+        await guild_player.advance()
 
     # -------------------------
     # TRACK EXCEPTION
@@ -189,6 +183,17 @@ class Music(commands.Cog):
             f"{payload.player.guild.id}: "
             f"{payload.exception}"
         )
+
+        player: wavelink.Player = typing.cast(wavelink.Player, payload.player)
+
+        if not player.guild:
+            return
+
+        guild_player = self.get_guild_player(player.guild.id)
+        if guild_player is None:
+            return
+
+        await guild_player.advance()
 
     # -------------------------
     # TRACK STUCK
@@ -268,9 +273,6 @@ class Music(commands.Cog):
             view=TrackAddedView(track.title, track.uri or "", track.extras.requested_by)
         )
 
-        if not guild_player.is_playing():
-            await guild_player.play_next()
-
     # -------------------------
     # SKIP
     # -------------------------
@@ -284,7 +286,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         track = await guild_player.skip()
         if track is not None:
@@ -308,7 +312,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if not guild_player:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.stop()
 
@@ -325,6 +331,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="pause", description="Pause playback.")
+    @app_commands.check(same_voice_channel)
     async def pause(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
@@ -332,7 +339,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.pause()
 
@@ -342,6 +351,7 @@ class Music(commands.Cog):
 
     @app_commands.guild_only()
     @app_commands.command(name="resume", description="Resume playback.")
+    @app_commands.check(same_voice_channel)
     async def resume(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
@@ -349,7 +359,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.resume()
 
@@ -372,7 +384,9 @@ class Music(commands.Cog):
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
 
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await interaction.followup.send(
             view=QueuedView(guild_player.get_queue(), page_number=page or 1)
@@ -384,6 +398,7 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @has_permissions(administrator=True)
     @app_commands.command(name="volume", description="Set playback volume.")
+    @app_commands.check(same_voice_channel)
     async def volume(
         self, interaction: discord.Interaction, volume: app_commands.Range[int, 0, 100]
     ) -> None:
@@ -393,7 +408,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.set_volume(volume)
 
@@ -409,6 +426,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="autoplay", description="Set autoplay.")
+    @app_commands.check(same_voice_channel)
     async def autoplay(
         self, interaction: discord.Interaction, mode: wavelink.AutoPlayMode
     ) -> None:
@@ -418,7 +436,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.autoplay(mode)
 
@@ -431,6 +451,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="nightcore", description="Turn into nightcore")
+    @app_commands.check(same_voice_channel)
     async def nightcore(self, interaction: discord.Interaction, value: bool) -> None:
         """Set the filter to a nightcore style."""
         await interaction.response.defer()
@@ -439,7 +460,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.nightcore(value)
 
@@ -452,6 +475,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="pitch", description="Change pitch.")
+    @app_commands.check(same_voice_channel)
     async def pitch(self, interaction: discord.Interaction, value: float) -> None:
         await interaction.response.defer()
 
@@ -459,7 +483,10 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
+
         await guild_player.pitch(value)
 
         await interaction.followup.send(
@@ -471,6 +498,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="speed", description="Change speed.")
+    @app_commands.check(same_voice_channel)
     async def speed(self, interaction: discord.Interaction, value: float) -> None:
         await interaction.response.defer()
 
@@ -478,7 +506,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.speed(value)
 
@@ -491,6 +521,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="rate", description="Change rate.")
+    @app_commands.check(same_voice_channel)
     async def rate(self, interaction: discord.Interaction, value: float) -> None:
         await interaction.response.defer()
 
@@ -498,7 +529,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         await guild_player.rate(value)
 
@@ -511,6 +544,7 @@ class Music(commands.Cog):
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(name="current", description="See the currently playing song.")
+    @app_commands.check(same_voice_channel)
     async def current(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
@@ -518,7 +552,9 @@ class Music(commands.Cog):
 
         guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
         if guild_player is None:
-            return
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
 
         current_song = guild_player.current
 
