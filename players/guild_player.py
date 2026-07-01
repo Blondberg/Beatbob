@@ -1,6 +1,7 @@
-import wavelink
-from enum import Enum
 import asyncio
+from enum import Enum
+
+import wavelink
 
 
 class LoopMode(Enum):
