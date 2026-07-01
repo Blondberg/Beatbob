@@ -1,3 +1,4 @@
+name: formatting
 on:
   push:
   pull_request: 
