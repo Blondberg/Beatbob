@@ -6,3 +6,5 @@
 [![Issues](https://img.shields.io/github/issues/blondberg/beatbob)](https://github.com/blondberg/beatbob/issues)
 [![Last Commit](https://img.shields.io/github/last-commit/blondberg/beatbob)]()
 
+
+![Black + isort](https://img.shields.io/github/actions/workflow/status/blondberg/beatbob/formatting)
