@@ -1,13 +1,8 @@
 import asyncio
-from enum import Enum
 
 import wavelink
 
-
-class LoopMode(Enum):
-    OFF = 0
-    TRACK = 1
-    QUEUE = 2
+from utils.enums import AutoPlayMode, LoopMode
 
 
 class GuildPlayer:
@@ -16,7 +11,6 @@ class GuildPlayer:
     def __init__(self, player: wavelink.Player):
         self.player = player
 
-        self.loop_mode = LoopMode.OFF
         self._lock = asyncio.Lock()
 
         self.volume = 10
@@ -24,6 +18,17 @@ class GuildPlayer:
     @property
     def current(self) -> wavelink.Playable | None:
         return self.player.current
+
+    def set_loop_mode(self, mode: LoopMode) -> None:
+        if mode == LoopMode.OFF:
+            self.player.queue.mode = wavelink.QueueMode.normal
+        elif mode == LoopMode.TRACK:
+            self.player.queue.mode = wavelink.QueueMode.loop
+        elif mode == LoopMode.QUEUE:
+            self.player.queue.mode = wavelink.QueueMode.loop_all
+
+    def shuffle(self):
+        self.player.queue.shuffle()
 
     async def set_volume(self, volume: int) -> None:
         self.volume = max(0, min(volume, 100))
@@ -73,37 +78,30 @@ class GuildPlayer:
 
     async def advance(self) -> None:
         async with self._lock:
-            current = self.player.current
-
-            # Loop current track
-            if self.loop_mode == LoopMode.TRACK and current is not None:
-                await self.player.play(current, volume=self.volume)
-                return
-
-            # Queue loop. TODO Append previous songs aswell
-            if self.loop_mode == LoopMode.QUEUE and current is not None:
-                await self.player.queue.put_wait(current)
-
-            # Normal queue
-            if not self.player.queue.is_empty:
-                track = self.player.queue.get()
-
-                await self.player.play(track, volume=self.volume)
-                return
+            if (
+                not self.player.queue.is_empty
+                or not self.player.queue.mode is wavelink.QueueMode.normal
+            ):
+                try:
+                    track = self.player.queue.get()
+                    await self.player.play(track, volume=self.volume)
+                    return
+                except Exception:
+                    print("something went wrong playing track")
 
             # Do nothing if autoplay is enabled. LavaLink will automatically request a recommendation
-            if self.player.autoplay != wavelink.AutoPlayMode.disabled:
+            if self.player.autoplay is not wavelink.AutoPlayMode.disabled:
                 return
 
             # Stop playback completely
             await self.player.stop()
 
     async def skip(self) -> wavelink.Playable | None:
-        return await self.player.skip(force=True)
+        return await self.player.skip(force=False)
 
     async def stop(self) -> None:
         self.player.queue.clear()
-        await self.player.skip()
+        await self.player.skip(force=True)
 
     async def pause(self) -> None:
         await self.player.pause(True)
@@ -117,7 +115,7 @@ class GuildPlayer:
     def is_playing(self) -> bool:
         return self.player.playing
 
-    async def autoplay(self, mode: wavelink.AutoPlayMode) -> None:
+    async def autoplay(self, mode: AutoPlayMode) -> None:
         self.player.autoplay = mode
 
     async def nightcore(self, value: float) -> None:

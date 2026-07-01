@@ -16,6 +16,7 @@ from discord.ext import commands
 
 from players.guild_player import GuildPlayer
 from utils.embeds import error_embed, success_embed
+from utils.enums import AutoPlayMode, LoopMode
 from utils.views import (
     NowPlayingView,
     PlaylistAddedView,
@@ -291,13 +292,17 @@ class Music(commands.Cog):
 
         track = await guild_player.skip()
         if track is not None:
-            await interaction.followup.send(
+            return await interaction.followup.send(
                 view=TrackSkippedView(
                     track.title,
                     track.uri or "",
                     interaction.user.global_name or "unknown",
                 )
             )
+
+        await interaction.followup.send(
+            "No track is currently playing.",
+        )
 
     # -------------------------
     # STOP
@@ -427,7 +432,7 @@ class Music(commands.Cog):
     @app_commands.command(name="autoplay", description="Set autoplay.")
     @app_commands.check(same_voice_channel)
     async def autoplay(
-        self, interaction: discord.Interaction, mode: wavelink.AutoPlayMode
+        self, interaction: discord.Interaction, mode: AutoPlayMode
     ) -> None:
         await interaction.response.defer()
 
@@ -443,6 +448,54 @@ class Music(commands.Cog):
 
         await interaction.followup.send(
             embed=success_embed(title="Autoplay", text=f"Autoplay set to {mode.name}.")
+        )
+
+    # -------------------------
+    # LOOP
+    # -------------------------
+    @app_commands.guild_only()
+    @app_commands.command(name="loop", description="Turn looping on/off.")
+    @app_commands.check(same_voice_channel)
+    async def loop(self, interaction: discord.Interaction, mode: LoopMode) -> None:
+        await interaction.response.defer()
+
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
+
+        guild_player.set_loop_mode(mode)
+
+        await interaction.followup.send(
+            embed=success_embed(title="Loop", text=f"Loop set to {mode.name}.")
+        )
+
+    # -------------------------
+    # LOOP
+    # -------------------------
+    @app_commands.guild_only()
+    @app_commands.command(
+        name="shuffle", description="Shuffle current queue. Can't be reversed!"
+    )
+    @app_commands.check(same_voice_channel)
+    async def shuffle(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+        assert interaction.guild is not None  # Guild should be a guarantee
+
+        guild_player: GuildPlayer | None = self.get_guild_player(interaction.guild.id)
+        if guild_player is None:
+            return await interaction.followup.send(
+                "I currently have no player in this server."
+            )
+
+        guild_player.shuffle()
+
+        await interaction.followup.send(
+            embed=success_embed(title="Shuffle", text=f"Shuffled queue!")
         )
 
     # -------------------------

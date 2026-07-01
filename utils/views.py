@@ -4,7 +4,7 @@ import discord
 import wavelink
 
 
-def format_duration(ms: int) -> str:
+def ms_to_hhmmss(ms: int) -> str:
     """Formats miliseconds into hh:mm:ss. Only shows hours if above 0.
 
     Args:
@@ -84,7 +84,7 @@ class NowPlayingView(discord.ui.LayoutView):
             ),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
-                content=f"{format_duration(self.progress.get('position') or 0)}  {self.progress_bar}  {format_duration(self.progress.get('length') or 0)}"
+                content=f"{ms_to_hhmmss(self.progress.get('position') or 0)}  {self.progress_bar}  {ms_to_hhmmss(self.progress.get('length') or 0)}"
             ),
             discord.ui.TextDisplay(content=f"**Requested by: **{requested_by}\n"),
             accent_color=discord.Color.blurple(),
@@ -142,7 +142,7 @@ class QueuedView(discord.ui.LayoutView):
         queue_string = ""
         if len(self.tracks) > 1:
             queue_string = "\n".join(
-                f"{start_index + index + 2}. [{song.title}]({song.uri}) [{format_duration(song.length)}] ({song.extras.requested_by})"
+                f"{start_index + index + 2}. [{song.title}]({song.uri}) [{ms_to_hhmmss(song.length)}] ({song.extras.requested_by})"
                 for index, song in enumerate(page_tracks)
             )
 
@@ -150,7 +150,7 @@ class QueuedView(discord.ui.LayoutView):
             discord.ui.Section(
                 discord.ui.TextDisplay(
                     content=f"## Coming up\n"
-                    f"1. **[{current_track.title}]({current_track.uri})** [{format_duration(current_track.length)}]\n"
+                    f"1. **[{current_track.title}]({current_track.uri})** [{ms_to_hhmmss(current_track.length)}]\n"
                     f"{self.tracks[0].author}\n"
                     f"**Requested by: **{current_track.extras.requested_by}"
                 ),
