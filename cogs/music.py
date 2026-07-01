@@ -16,8 +16,13 @@ from discord.ext import commands
 
 from players.guild_player import GuildPlayer
 from utils.embeds import error_embed, success_embed
-from utils.views import (NowPlayingView, PlaylistAddedView, QueuedView,
-                         TrackAddedView, TrackSkippedView)
+from utils.views import (
+    NowPlayingView,
+    PlaylistAddedView,
+    QueuedView,
+    TrackAddedView,
+    TrackSkippedView,
+)
 
 
 def same_voice_channel(interaction: discord.Interaction) -> bool:
@@ -214,8 +219,6 @@ class Music(commands.Cog):
         self, payload: wavelink.TrackStartEventPayload
     ) -> None:
         """Ensure correct guild settings are set when a track start."""
-
-        pass
 
     # -------------------------
     # PLAY

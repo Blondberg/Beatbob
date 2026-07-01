@@ -11,29 +11,22 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
 
-  # Automatically checks for language upgrades and updates code accordingly
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.21.0
-    hooks:
-      - id: pyupgrade
-        exclude: \.(po|pot|yml|yaml|json|md)$
-
   # Remove unused imports and variables
   - repo: https://github.com/PyCQA/autoflake
-    rev: v2.3.1
+    rev: v2.3.3
     hooks:
       - id: autoflake
 
   # Automatically sorts and groups imports
   - repo: https://github.com/pycqa/isort
-    rev: 6.1.0
+    rev: 8.0.1
     hooks:
       - id: isort
+        args: ["--profile", "black"]
 
   # Format with black
   - repo: https://github.com/psf/black
-    rev: 25.9.0
+    rev: 26.5.1
     hooks:
       - id: black
-        args: [--safe, --quiet]
-        exclude: \.(po|pot|yml|yaml|json|md)$
+        exclude : \.(po|pot|yml|yaml|json|md)$
