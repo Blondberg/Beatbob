@@ -13,7 +13,6 @@ from utils.embeds import error_embed, success_embed
 from discord.app_commands.checks import has_permissions
 import discord
 import wavelink
-from enum import Enum
 from utils.views import (
     NowPlayingView,
     QueuedView,
