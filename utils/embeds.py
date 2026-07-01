@@ -1,5 +1,6 @@
-import discord
 import datetime
+
+import discord
 
 
 def error_embed(title: str, text: str) -> discord.Embed:

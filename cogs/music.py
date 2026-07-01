@@ -1,26 +1,23 @@
 # TODO Get rid of cyclic import
 from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from bot import BeatBob
 
+import typing
 
-from discord.ext import commands
-from players.guild_player import GuildPlayer
-from discord import app_commands
-from utils.embeds import error_embed, success_embed
-from discord.app_commands.checks import has_permissions
 import discord
 import wavelink
-from utils.views import (
-    NowPlayingView,
-    QueuedView,
-    TrackSkippedView,
-    TrackAddedView,
-    PlaylistAddedView,
-)
-import typing
+from discord import app_commands
+from discord.app_commands.checks import has_permissions
+from discord.ext import commands
+
+from players.guild_player import GuildPlayer
+from utils.embeds import error_embed, success_embed
+from utils.views import (NowPlayingView, PlaylistAddedView, QueuedView,
+                         TrackAddedView, TrackSkippedView)
 
 
 def same_voice_channel(interaction: discord.Interaction) -> bool:

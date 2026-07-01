@@ -1,6 +1,7 @@
+import math
+
 import discord
 import wavelink
-import math
 
 
 def format_duration(ms: int) -> str:
