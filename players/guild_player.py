@@ -101,12 +101,12 @@ class GuildPlayer:
             # Stop playback completely
             await self.player.stop()
 
-    async def skip(self) -> wavelink.Playable | None:
-        return await self.player.skip(force=False)
+    async def skip(self, *, force: bool = False) -> wavelink.Playable | None:
+        return await self.player.skip(force=force)
 
     async def stop(self) -> None:
         self.player.queue.clear()
-        await self.player.skip(force=True)
+        await self.skip(force=True)
 
     async def pause(self) -> None:
         await self.player.pause(True)
