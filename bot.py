@@ -5,6 +5,7 @@ import platform
 
 import discord
 import wavelink
+from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -18,6 +19,13 @@ GUILD_ID = os.getenv("GUILD_ID", "")
 
 LAVALINK_URI = os.getenv("LAVALINK_URI", "")
 LAVALINK_PASSWORD = os.getenv("LAVALINK_PASSWORD", "youshallnotpass")
+
+
+def require_setting(name: str, value: str) -> str:
+    if not value:
+        raise RuntimeError(f"Missing required environment variable: {name}")
+
+    return value
 
 
 # Setup loggers
@@ -75,8 +83,15 @@ class BeatBob(commands.Bot):
                 self.logger.exception(f"Failed to load extension '{extension_name}'")
 
         # Connect Lavalink
-        node = wavelink.Node(uri=LAVALINK_URI, password=LAVALINK_PASSWORD)
-        await wavelink.Pool.connect(nodes=[node], client=self)
+        node = wavelink.Node(
+            uri=require_setting("LAVALINK_URI", LAVALINK_URI),
+            password=LAVALINK_PASSWORD,
+        )
+        try:
+            await wavelink.Pool.connect(nodes=[node], client=self)
+        except Exception:
+            self.logger.exception("Failed to connect to Lavalink.")
+            raise
 
     async def on_ready(self) -> None:
         assert self.user is not None
@@ -94,4 +109,4 @@ class BeatBob(commands.Bot):
 
 if __name__ == "__main__":
     bot = BeatBob()
-    bot.run(DISCORD_TOKEN)
+    bot.run(require_setting("DISCORD_TOKEN", DISCORD_TOKEN))

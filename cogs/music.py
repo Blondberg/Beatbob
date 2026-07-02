@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from bot import BeatBob
 
+import logging
 import typing
 
 import discord
@@ -25,6 +26,8 @@ from utils.views import (
     TrackSkippedView,
 )
 
+logger = logging.getLogger("beatbob")
+
 
 def same_voice_channel(interaction: discord.Interaction) -> bool:
     # Must be in a guild
@@ -42,7 +45,7 @@ def same_voice_channel(interaction: discord.Interaction) -> bool:
 
     # Bot must be in voice
     if not guild_voice or not guild_voice.channel:
-        raise app_commands.CheckFailure("I'm not conntected to a voice channel.")
+        raise app_commands.CheckFailure("I'm not connected to a voice channel.")
 
     # User and bot must be in same voice
     if interaction.user.voice.channel != guild_voice.channel:
@@ -72,7 +75,17 @@ class Music(commands.Cog):
             return None
 
         if interaction.guild.voice_client:
-            return typing.cast(wavelink.Player, interaction.guild.voice_client)
+            guild_voice = interaction.guild.voice_client
+
+            if guild_voice.channel is None:
+                return None
+
+            if voice.channel != guild_voice.channel:
+                raise app_commands.CheckFailure(
+                    "You must be in the same voice channel as me."
+                )
+
+            return typing.cast(wavelink.Player, guild_voice)
 
         return typing.cast(
             wavelink.Player, await voice.channel.connect(cls=wavelink.Player)
@@ -86,6 +99,12 @@ class Music(commands.Cog):
 
     def remove_guild_player(self, guild_id: int) -> bool:
         return self.players.pop(guild_id, None) is not None
+
+    def remove_player(self, player: wavelink.Player) -> bool:
+        if player.guild is None:
+            return False
+
+        return self.remove_guild_player(player.guild.id)
 
     def create_guild_player(
         self, guild_id: int, player: wavelink.Player
@@ -143,12 +162,67 @@ class Music(commands.Cog):
 
         return cast(wavelink.Player, guild.voice_client)
 
+    async def cog_app_command_error(
+        self, interaction: discord.Interaction, error: app_commands.AppCommandError
+    ) -> None:
+        original: Exception = error
+        if isinstance(error, app_commands.CommandInvokeError):
+            original = error.original
+
+        if isinstance(original, app_commands.CheckFailure):
+            await self._send_error(interaction, "Cannot do that", str(original))
+            return
+
+        logger.error(
+            "Unhandled music command error.",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        await self._send_error(
+            interaction,
+            "Command failed",
+            "Something went wrong while running that command. Check the logs for details.",
+        )
+
+    async def _send_error(
+        self, interaction: discord.Interaction, title: str, message: str
+    ) -> None:
+        embed = error_embed(title, message)
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @commands.Cog.listener()
     async def on_wavelink_node_ready(
         self, payload: wavelink.NodeReadyEventPayload
     ) -> None:
         self.bot.logger.info(
             f"Wavelink Node connected: {payload.node} | Resumed: {payload.resumed}"
+        )
+
+    @commands.Cog.listener()
+    async def on_wavelink_node_disconnected(
+        self, payload: wavelink.NodeDisconnectedEventPayload
+    ) -> None:
+        self.players.clear()
+        self.bot.logger.warning(
+            f"Wavelink node disconnected: {payload.node}. Cleared guild players."
+        )
+
+    @commands.Cog.listener()
+    async def on_wavelink_websocket_closed(
+        self, payload: wavelink.WebsocketClosedEventPayload
+    ) -> None:
+        if payload.player is None:
+            return
+
+        removed = self.remove_player(payload.player)
+        self.bot.logger.warning(
+            "Wavelink websocket closed: code=%s reason=%s by_remote=%s removed_player=%s",
+            payload.code,
+            payload.reason,
+            payload.by_remote,
+            removed,
         )
 
     # -------------------------
@@ -159,16 +233,21 @@ class Music(commands.Cog):
         self, payload: wavelink.TrackEndEventPayload
     ) -> None:
         """Start next track on track end."""
-        player: wavelink.Player = typing.cast(wavelink.Player, payload.player)
-
-        if not player.guild:
+        player = payload.player
+        if player is None or player.guild is None:
             return
 
-        guild_player = self.get_guild_player(player.guild.id)
+        guild_id = player.guild.id
+        guild_player = self.get_guild_player(guild_id)
         if guild_player is None:
             return
 
-        await guild_player.advance()
+        try:
+            await guild_player.advance()
+        except Exception:
+            self.bot.logger.exception(
+                f"Failed to advance after track end in guild {guild_id}."
+            )
 
     # -------------------------
     # TRACK EXCEPTION
@@ -177,25 +256,25 @@ class Music(commands.Cog):
     async def on_wavelink_track_exception(
         self, payload: wavelink.TrackExceptionEventPayload
     ) -> None:
-        if payload.player.guild is None:
+        player = payload.player
+        if player is None or player.guild is None:
             return
 
-        self.bot.logger.exception(
-            f"Track exception in guild "
-            f"{payload.player.guild.id}: "
-            f"{payload.exception}"
+        self.bot.logger.error(
+            f"Track exception in guild " f"{player.guild.id}: " f"{payload.exception}"
         )
 
-        player: wavelink.Player = typing.cast(wavelink.Player, payload.player)
-
-        if not player.guild:
-            return
-
-        guild_player = self.get_guild_player(player.guild.id)
+        guild_id = player.guild.id
+        guild_player = self.get_guild_player(guild_id)
         if guild_player is None:
             return
 
-        await guild_player.advance()
+        try:
+            await guild_player.advance()
+        except Exception:
+            self.bot.logger.exception(
+                f"Failed to advance after track exception in guild {guild_id}."
+            )
 
     # -------------------------
     # TRACK STUCK
@@ -205,12 +284,29 @@ class Music(commands.Cog):
         self, payload: wavelink.TrackStuckEventPayload
     ) -> None:
         """Skip to next track if current is stuck."""
-        if payload.player.guild is None:
+        player = payload.player
+        if player is None or player.guild is None:
             return
 
-        self.bot.logger.warning(f"Track stuck in guild " f"{payload.player.guild.id}")
+        guild_id = player.guild.id
+        self.bot.logger.warning(f"Track stuck in guild " f"{guild_id}")
 
-        await payload.player.skip(force=True)
+        guild_player = self.get_guild_player(guild_id)
+        if guild_player is None:
+            try:
+                await player.skip(force=True)
+            except Exception:
+                self.bot.logger.exception(
+                    f"Failed to force skip stuck track in guild {guild_id}."
+                )
+            return
+
+        try:
+            await guild_player.skip(force=True)
+        except Exception:
+            self.bot.logger.exception(
+                f"Failed to skip stuck track in guild {guild_id}."
+            )
 
     # -------------------------
     # TRACK START
@@ -238,10 +334,6 @@ class Music(commands.Cog):
 
         assert interaction.guild is not None  # Guild should be a guarantee
 
-        guild_player: GuildPlayer = self.get_or_create_guild_player(
-            interaction.guild.id, player
-        )
-
         tracks: wavelink.Search = await wavelink.Playable.search(query)
 
         if not tracks:
@@ -252,6 +344,10 @@ class Music(commands.Cog):
                 ),
                 ephemeral=True,
             )
+
+        guild_player: GuildPlayer = self.get_or_create_guild_player(
+            interaction.guild.id, player
+        )
 
         if isinstance(tracks, wavelink.Playlist):
             tracks.extras = {"requested_by": interaction.user.name}
@@ -267,7 +363,8 @@ class Music(commands.Cog):
             )
 
         track: wavelink.Playable = tracks[0]
-        track.extras = {"requested_by": interaction.user.global_name}
+        requested_by = interaction.user.global_name or interaction.user.name
+        track.extras = {"requested_by": requested_by}
         await guild_player.add_track(track)
         await interaction.followup.send(
             view=TrackAddedView(track.title, track.uri or "", track.extras.requested_by)
@@ -320,11 +417,22 @@ class Music(commands.Cog):
                 "I currently have no player in this server."
             )
 
-        await guild_player.stop()
+        try:
+            await guild_player.stop()
+        except Exception:
+            self.bot.logger.exception(
+                f"Failed to stop playback cleanly in guild {interaction.guild.id}."
+            )
+        finally:
+            self.remove_guild_player(interaction.guild.id)
 
         if interaction.guild.voice_client is not None:
-            if self.remove_guild_player(interaction.guild.id):
+            try:
                 await interaction.guild.voice_client.disconnect(force=False)
+            except Exception:
+                self.bot.logger.exception(
+                    f"Failed to disconnect voice client in guild {interaction.guild.id}."
+                )
 
         await interaction.followup.send(
             embed=success_embed(title="Stopped", text="Playback stopped.")
@@ -528,7 +636,11 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="pitch", description="Change pitch.")
     @app_commands.check(same_voice_channel)
-    async def pitch(self, interaction: discord.Interaction, value: float) -> None:
+    async def pitch(
+        self,
+        interaction: discord.Interaction,
+        value: app_commands.Range[float, 0.1, 5.0],
+    ) -> None:
         await interaction.response.defer()
 
         assert interaction.guild is not None  # Guild should be a guarantee
@@ -551,7 +663,11 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="speed", description="Change speed.")
     @app_commands.check(same_voice_channel)
-    async def speed(self, interaction: discord.Interaction, value: float) -> None:
+    async def speed(
+        self,
+        interaction: discord.Interaction,
+        value: app_commands.Range[float, 0.1, 5.0],
+    ) -> None:
         await interaction.response.defer()
 
         assert interaction.guild is not None  # Guild should be a guarantee
@@ -574,7 +690,11 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="rate", description="Change rate.")
     @app_commands.check(same_voice_channel)
-    async def rate(self, interaction: discord.Interaction, value: float) -> None:
+    async def rate(
+        self,
+        interaction: discord.Interaction,
+        value: app_commands.Range[float, 0.1, 5.0],
+    ) -> None:
         await interaction.response.defer()
 
         assert interaction.guild is not None  # Guild should be a guarantee

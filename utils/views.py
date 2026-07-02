@@ -4,6 +4,10 @@ import discord
 import wavelink
 
 
+def requested_by(track: wavelink.Playable) -> str:
+    return str(getattr(track.extras, "requested_by", "Autoplay"))
+
+
 def ms_to_hhmmss(ms: int) -> str:
     """Formats miliseconds into hh:mm:ss. Only shows hours if above 0.
 
@@ -70,7 +74,7 @@ class NowPlayingView(discord.ui.LayoutView):
             "Autoplay",
         )
 
-        container: discord.ui.Container = discord.ui.Container(
+        container: discord.ui.Container[discord.ui.LayoutView] = discord.ui.Container(
             discord.ui.Section(
                 discord.ui.TextDisplay(
                     content=f"## Current song\n"
@@ -133,7 +137,7 @@ class QueuedView(discord.ui.LayoutView):
         # Clamp page into valid range
         self.page_number = max(1, min(page_number, total_pages))
 
-        start_index = (page_number - 1) * page_size
+        start_index = (self.page_number - 1) * page_size
         end_index = start_index + page_size
 
         page_tracks = queued_tracks[start_index:end_index]
@@ -142,17 +146,17 @@ class QueuedView(discord.ui.LayoutView):
         queue_string = ""
         if len(self.tracks) > 1:
             queue_string = "\n".join(
-                f"{start_index + index + 2}. [{song.title}]({song.uri}) [{ms_to_hhmmss(song.length)}] ({song.extras.requested_by})"
+                f"{start_index + index + 2}. [{song.title}]({song.uri}) [{ms_to_hhmmss(song.length)}] ({requested_by(song)})"
                 for index, song in enumerate(page_tracks)
             )
 
-        container: discord.ui.Container = discord.ui.Container(
+        container: discord.ui.Container[discord.ui.LayoutView] = discord.ui.Container(
             discord.ui.Section(
                 discord.ui.TextDisplay(
                     content=f"## Coming up\n"
                     f"1. **[{current_track.title}]({current_track.uri})** [{ms_to_hhmmss(current_track.length)}]\n"
                     f"{self.tracks[0].author}\n"
-                    f"**Requested by: **{current_track.extras.requested_by}"
+                    f"**Requested by: **{requested_by(current_track)}"
                 ),
                 accessory=discord.ui.Thumbnail(
                     self.tracks[0].artwork
@@ -162,7 +166,8 @@ class QueuedView(discord.ui.LayoutView):
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 content=(
-                    f"### Queue\n{queue_string}\n" f"Page {page_number}/{total_pages}"
+                    f"### Queue\n{queue_string}\n"
+                    f"Page {self.page_number}/{total_pages}"
                     if len(queue_string) > 1
                     else "No additional songs in queue."
                 )
@@ -183,7 +188,7 @@ class TrackSkippedView(discord.ui.LayoutView):
     ):
         super().__init__(timeout=timeout)
 
-        container: discord.ui.Container = discord.ui.Container(
+        container: discord.ui.Container[discord.ui.LayoutView] = discord.ui.Container(
             discord.ui.TextDisplay(
                 content="## Track skipped\n"
                 f"Track **[{track_title}]({track_uri})** skipped by **{by_user}**."
@@ -204,7 +209,7 @@ class TrackAddedView(discord.ui.LayoutView):
     ):
         super().__init__(timeout=timeout)
 
-        container: discord.ui.Container = discord.ui.Container(
+        container: discord.ui.Container[discord.ui.LayoutView] = discord.ui.Container(
             discord.ui.TextDisplay(
                 content="## Track added\n"
                 f"Track **[{track_title}]({track_uri})** added by **{requested_by}**."
@@ -226,7 +231,7 @@ class PlaylistAddedView(discord.ui.LayoutView):
     ):
         super().__init__(timeout=timeout)
 
-        container: discord.ui.Container = discord.ui.Container(
+        container: discord.ui.Container[discord.ui.LayoutView] = discord.ui.Container(
             discord.ui.TextDisplay(
                 content="## Playlist added\n"
                 f"Playlist **[{playlist_name}]({playlist_url})** ({amount_added} songs) added by **{requested_by}**."
