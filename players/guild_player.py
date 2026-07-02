@@ -1,8 +1,11 @@
 import asyncio
+import logging
 
 import wavelink
 
 from utils.enums import AutoPlayMode, LoopMode
+
+logger = logging.getLogger("beatbob")
 
 
 class GuildPlayer:
@@ -27,12 +30,12 @@ class GuildPlayer:
         elif mode == LoopMode.QUEUE:
             self.player.queue.mode = wavelink.QueueMode.loop_all
 
-    def shuffle(self):
+    def shuffle(self) -> None:
         self.player.queue.shuffle()
 
     async def set_volume(self, volume: int) -> None:
         self.volume = max(0, min(volume, 100))
-        await self.player.set_volume(volume)
+        await self.player.set_volume(self.volume)
 
     async def add_track(self, track: wavelink.Playable) -> None:
         """Adds a single track to the queue.
@@ -80,14 +83,16 @@ class GuildPlayer:
         async with self._lock:
             if (
                 not self.player.queue.is_empty
-                or not self.player.queue.mode is wavelink.QueueMode.normal
+                or self.player.queue.mode is not wavelink.QueueMode.normal
             ):
                 try:
                     track = self.player.queue.get()
                     await self.player.play(track, volume=self.volume)
                     return
+                except wavelink.QueueEmpty:
+                    pass
                 except Exception:
-                    print("something went wrong playing track")
+                    logger.exception("Failed to advance playback.")
 
             # Do nothing if autoplay is enabled. LavaLink will automatically request a recommendation
             if self.player.autoplay is not wavelink.AutoPlayMode.disabled:
@@ -116,7 +121,10 @@ class GuildPlayer:
         return self.player.playing
 
     async def autoplay(self, mode: AutoPlayMode) -> None:
-        self.player.autoplay = mode
+        if mode == AutoPlayMode.ON:
+            self.player.autoplay = wavelink.AutoPlayMode.enabled
+        elif mode == AutoPlayMode.OFF:
+            self.player.autoplay = wavelink.AutoPlayMode.disabled
 
     async def nightcore(self, value: float) -> None:
         filters: wavelink.Filters = self.player.filters

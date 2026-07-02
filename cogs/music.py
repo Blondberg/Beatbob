@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from bot import BeatBob
 
+import logging
 import typing
 
 import discord
@@ -25,6 +26,8 @@ from utils.views import (
     TrackSkippedView,
 )
 
+logger = logging.getLogger("beatbob")
+
 
 def same_voice_channel(interaction: discord.Interaction) -> bool:
     # Must be in a guild
@@ -42,7 +45,7 @@ def same_voice_channel(interaction: discord.Interaction) -> bool:
 
     # Bot must be in voice
     if not guild_voice or not guild_voice.channel:
-        raise app_commands.CheckFailure("I'm not conntected to a voice channel.")
+        raise app_commands.CheckFailure("I'm not connected to a voice channel.")
 
     # User and bot must be in same voice
     if interaction.user.voice.channel != guild_voice.channel:
@@ -143,6 +146,36 @@ class Music(commands.Cog):
 
         return cast(wavelink.Player, guild.voice_client)
 
+    async def cog_app_command_error(
+        self, interaction: discord.Interaction, error: app_commands.AppCommandError
+    ) -> None:
+        original: Exception = error
+        if isinstance(error, app_commands.CommandInvokeError):
+            original = error.original
+
+        if isinstance(original, app_commands.CheckFailure):
+            await self._send_error(interaction, "Cannot do that", str(original))
+            return
+
+        logger.error(
+            "Unhandled music command error.",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+        await self._send_error(
+            interaction,
+            "Command failed",
+            "Something went wrong while running that command. Check the logs for details.",
+        )
+
+    async def _send_error(
+        self, interaction: discord.Interaction, title: str, message: str
+    ) -> None:
+        embed = error_embed(title, message)
+        if interaction.response.is_done():
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @commands.Cog.listener()
     async def on_wavelink_node_ready(
         self, payload: wavelink.NodeReadyEventPayload
@@ -180,13 +213,13 @@ class Music(commands.Cog):
         if payload.player.guild is None:
             return
 
-        self.bot.logger.exception(
+        self.bot.logger.error(
             f"Track exception in guild "
             f"{payload.player.guild.id}: "
             f"{payload.exception}"
         )
 
-        player: wavelink.Player = typing.cast(wavelink.Player, payload.player)
+        player: wavelink.Player = payload.player
 
         if not player.guild:
             return
@@ -267,7 +300,8 @@ class Music(commands.Cog):
             )
 
         track: wavelink.Playable = tracks[0]
-        track.extras = {"requested_by": interaction.user.global_name}
+        requested_by = interaction.user.global_name or interaction.user.name
+        track.extras = {"requested_by": requested_by}
         await guild_player.add_track(track)
         await interaction.followup.send(
             view=TrackAddedView(track.title, track.uri or "", track.extras.requested_by)
@@ -528,7 +562,11 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="pitch", description="Change pitch.")
     @app_commands.check(same_voice_channel)
-    async def pitch(self, interaction: discord.Interaction, value: float) -> None:
+    async def pitch(
+        self,
+        interaction: discord.Interaction,
+        value: app_commands.Range[float, 0.1, 5.0],
+    ) -> None:
         await interaction.response.defer()
 
         assert interaction.guild is not None  # Guild should be a guarantee
@@ -551,7 +589,11 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="speed", description="Change speed.")
     @app_commands.check(same_voice_channel)
-    async def speed(self, interaction: discord.Interaction, value: float) -> None:
+    async def speed(
+        self,
+        interaction: discord.Interaction,
+        value: app_commands.Range[float, 0.1, 5.0],
+    ) -> None:
         await interaction.response.defer()
 
         assert interaction.guild is not None  # Guild should be a guarantee
@@ -574,7 +616,11 @@ class Music(commands.Cog):
     @app_commands.guild_only()
     @app_commands.command(name="rate", description="Change rate.")
     @app_commands.check(same_voice_channel)
-    async def rate(self, interaction: discord.Interaction, value: float) -> None:
+    async def rate(
+        self,
+        interaction: discord.Interaction,
+        value: app_commands.Range[float, 0.1, 5.0],
+    ) -> None:
         await interaction.response.defer()
 
         assert interaction.guild is not None  # Guild should be a guarantee
