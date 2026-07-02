@@ -54,7 +54,7 @@ python bot.py
 
 ## Roadmap
 #### Commands
-- [ ] `/shuffle` and `/loop` commands.
+- [x] `/shuffle` and `/loop` commands.
 - [ ] Queue history and ability to play `/previous` tracks.
 - [ ] `/remove` a song from queue.
 - [ ] `/seek` through a song.
