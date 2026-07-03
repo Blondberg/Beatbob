@@ -1,0 +1,33 @@
+services:
+  bot:
+    build: .
+    container_name: beatbob-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      LAVALINK_URI: http://lavalink:2333
+      LAVALINK_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      lavalink:
+        condition: service_started
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    container_name: beatbob-lavalink
+    restart: unless-stopped
+    environment:
+      _JAVA_OPTIONS: -Xmx1G
+      SERVER_PORT: 2333
+      SERVER_ADDRESS: 0.0.0.0
+      LAVALINK_SERVER_PASSWORD: ${LAVALINK_PASSWORD:-youshallnotpass}
+      PLUGINS_LAVASRC_SPOTIFY_CLIENTID: ${SPOTIFY_CLIENT_ID:-}
+      PLUGINS_LAVASRC_SPOTIFY_CLIENTSECRET: ${SPOTIFY_CLIENT_SECRET:-}
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml:ro
+      - ./plugins:/opt/Lavalink/plugins
+      - ./logs/lavalink:/opt/Lavalink/logs
+    ports:
+      - "2333:2333"
