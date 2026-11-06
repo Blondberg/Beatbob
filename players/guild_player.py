@@ -1,3 +1,4 @@
+from typing_extensions import runtime
 import asyncio
 import logging
 
@@ -13,7 +14,8 @@ class GuildPlayer:
 
     def __init__(self, player: wavelink.Player):
         self.player = player
-
+        self.player.autoplay = wavelink.AutoPlayMode.partial
+        self._stopping = False
         self._lock = asyncio.Lock()
 
         self.volume = 10
@@ -71,42 +73,48 @@ class GuildPlayer:
             "length": 0,
         }
 
-    async def play_next(self) -> None:
-        if self.player.queue.is_empty:
-            return
-
-        next_song = self.player.queue.get()
-
-        await self.player.play(next_song, volume=self.volume)
+    async def play_next(self) -> None:  # TODO: is this even used?
+        await self.advance()
 
     async def advance(self) -> None:
         async with self._lock:
-            if (
-                not self.player.queue.is_empty
-                or self.player.queue.mode is not wavelink.QueueMode.normal
-            ):
-                try:
-                    track = self.player.queue.get()
-                    await self.player.play(track, volume=self.volume)
-                    return
-                except wavelink.QueueEmpty:
-                    pass
-                except Exception:
-                    logger.exception("Failed to advance playback.")
+            if self._stopping:
+                raise RuntimeError("This player is stopping.")
 
-            # Do nothing if autoplay is enabled. LavaLink will automatically request a recommendation
-            if self.player.autoplay is not wavelink.AutoPlayMode.disabled:
+            if not self.player.connected:
+                raise RuntimeError("The voice connection is unavailable.")
+
+            # Do nothing if still playing
+            if self.player.current is not None:
                 return
 
-            # Stop playback completely
-            await self.player.stop()
+            try:
+                track = self.player.queue.get()
+            except wavelink.QueueEmpty:
+                return
+
+            try:
+                await self.player.play(track, volume=self.volume, paused=False)
+            except wavelink.LavalinkException:
+                self.player.queue.loaded = None
+                self.player.queue.put_at(0, track)
+                raise
 
     async def skip(self, *, force: bool = False) -> wavelink.Playable | None:
         return await self.player.skip(force=force)
 
     async def stop(self) -> None:
-        self.player.queue.clear()
-        await self.skip(force=True)
+        async with self._lock:
+            self._stopping = True
+
+            # Disable advancement before generating a track-end advancement
+            self.player.autoplay = wavelink.AutoPlayMode.disabled
+
+            # reset() calso clears loop state and history
+            self.player.queue.reset()
+            self.player.auto_queue.reset()
+
+            await self.player.skip(force=True)
 
     async def pause(self) -> None:
         await self.player.pause(True)
@@ -121,10 +129,14 @@ class GuildPlayer:
         return self.player.playing
 
     async def autoplay(self, mode: AutoPlayMode) -> None:
-        if mode == AutoPlayMode.ON:
-            self.player.autoplay = wavelink.AutoPlayMode.enabled
-        elif mode == AutoPlayMode.OFF:
-            self.player.autoplay = wavelink.AutoPlayMode.disabled
+        if self._stopping:
+            raise RuntimeError("This player is stopping.")
+
+        self.player.autoplay = (
+            wavelink.AutoPlayMode.enabled
+            if mode == AutoPlayMode.ON
+            else wavelink.AutoPlayMode.partial
+        )
 
     async def nightcore(self, value: float) -> None:
         filters: wavelink.Filters = self.player.filters
@@ -155,11 +167,7 @@ class GuildPlayer:
         return self.player.queue.count
 
     async def cleanup(self) -> None:
-        # Clear queue
-        self.player.queue.clear()
-
-        # Stop playback
-        if self.player.playing:
-            await self.player.stop()
-
-        await self.player.disconnect()
+        try:
+            await self.stop()
+        finally:
+            await self.player.disconnect()

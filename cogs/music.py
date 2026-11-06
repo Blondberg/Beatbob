@@ -92,10 +92,17 @@ class Music(commands.Cog):
         )
 
     def get_guild_player(self, guild_id: int) -> GuildPlayer | None:
-        if guild_id is None:
-            raise TypeError("Guild id cannot be None. Needs to be int.")
+        wrapper = self.players.get(guild_id)
+        if wrapper is None:
+            return None
 
-        return self.players.get(guild_id)
+        guild = self.bot.get_guild(guild_id)
+
+        if guild is None or guild.voice_client is not wrapper.player:
+            self.players.pop(guild_id, None)
+            return None
+
+        return wrapper
 
     def remove_guild_player(self, guild_id: int) -> bool:
         return self.players.pop(guild_id, None) is not None
@@ -104,20 +111,18 @@ class Music(commands.Cog):
         if player.guild is None:
             return False
 
-        return self.remove_guild_player(player.guild.id)
+        wrapper = self.players.get(player.guild.id)
+
+        if wrapper is None or wrapper.player is not player:
+            return False
+
+        del self.players[player.guild.id]
+        return True
 
     def create_guild_player(
         self, guild_id: int, player: wavelink.Player
     ) -> GuildPlayer:
-        """Create a guild player for guild specified by id.
-
-        Args:
-            guild_id (int): Id of guild.
-            player (wavelink.Player): Wavelink player connected to guild.
-
-        Returns:
-            GuildPlayer: The guild player that was created.
-        """
+        """Create a guild player for guild specified by id."""
         guild_player = GuildPlayer(player)
 
         player.inactive_timeout = 600
@@ -129,25 +134,11 @@ class Music(commands.Cog):
     def get_or_create_guild_player(
         self, guild_id: int, player: wavelink.Player
     ) -> GuildPlayer:
-        """Gets or creates a guild player if none exist for selected guild id.
+        """Gets or creates a guild player if none exist for selected guild id."""
+        wrapper = self.get_guild_player(guild_id)
 
-        Args:
-            guild_id (int | None): Id of guild.
-            player (wavelink.Player): Wavelink player connected to guild.
-
-        Raises:
-            TypeError: If guild_id is None.
-
-        Returns:
-            GuildPlayer: Existing player for guild id, or new if none existed.
-        """
-        if guild_id is None:
-            raise TypeError("Guild id cannot be None. Needs to be int.")
-
-        guild_player = self.get_guild_player(guild_id)
-
-        if guild_player:
-            return guild_player
+        if wrapper is not None and wrapper.player is player:
+            return wrapper
 
         return self.create_guild_player(
             guild_id,
@@ -196,33 +187,42 @@ class Music(commands.Cog):
     async def on_wavelink_node_ready(
         self, payload: wavelink.NodeReadyEventPayload
     ) -> None:
-        self.bot.logger.info(
+        logger.info(
             f"Wavelink Node connected: {payload.node} | Resumed: {payload.resumed}"
         )
+
+        if payload.resumed:
+            return  # the node resumed successfully
+
+        for player in list(payload.node.players.values()):
+            guild = player.guild
+            if guild is None or guild.voice_client is not player:
+                continue
+            player.autoplay = wavelink.AutoPlayMode.disabled
+            self.remove_player(player)
+
+            try:
+                await player.disconnect()
+            except Exception:
+                logger.exception(
+                    "Failed to release obsolete plauyer: guild=%s", guild.id
+                )
 
     @commands.Cog.listener()
     async def on_wavelink_node_disconnected(
         self, payload: wavelink.NodeDisconnectedEventPayload
     ) -> None:
-        self.players.clear()
-        self.bot.logger.warning(
-            f"Wavelink node disconnected: {payload.node}. Cleared guild players."
-        )
+        logger.warning("Lavalink node disconnected: %s", payload.node)
 
     @commands.Cog.listener()
     async def on_wavelink_websocket_closed(
         self, payload: wavelink.WebsocketClosedEventPayload
     ) -> None:
-        if payload.player is None:
-            return
-
-        removed = self.remove_player(payload.player)
-        self.bot.logger.warning(
-            "Wavelink websocket closed: code=%s reason=%s by_remote=%s removed_player=%s",
+        logger.warning(
+            "Voice websocket closed: code=%s reason=%s by_remote=%s",
             payload.code,
             payload.reason,
             payload.by_remote,
-            removed,
         )
 
     # -------------------------
@@ -237,17 +237,12 @@ class Music(commands.Cog):
         if player is None or player.guild is None:
             return
 
-        guild_id = player.guild.id
-        guild_player = self.get_guild_player(guild_id)
-        if guild_player is None:
-            return
-
-        try:
-            await guild_player.advance()
-        except Exception:
-            self.bot.logger.exception(
-                f"Failed to advance after track end in guild {guild_id}."
-            )
+        logger.debug(
+            "Track ended: guild=%s reason=%s track=%s",
+            player.guild.id,
+            payload.reason,
+            payload.track.identifier,
+        )
 
     # -------------------------
     # TRACK EXCEPTION
@@ -260,21 +255,12 @@ class Music(commands.Cog):
         if player is None or player.guild is None:
             return
 
-        self.bot.logger.error(
-            f"Track exception in guild " f"{player.guild.id}: " f"{payload.exception}"
+        logger.error(
+            "Track failed: guild=%s track=%s exception=%s",
+            player.guild.id,
+            payload.track.identifier,
+            payload.exception,
         )
-
-        guild_id = player.guild.id
-        guild_player = self.get_guild_player(guild_id)
-        if guild_player is None:
-            return
-
-        try:
-            await guild_player.advance()
-        except Exception:
-            self.bot.logger.exception(
-                f"Failed to advance after track exception in guild {guild_id}."
-            )
 
     # -------------------------
     # TRACK STUCK
@@ -289,7 +275,7 @@ class Music(commands.Cog):
             return
 
         guild_id = player.guild.id
-        self.bot.logger.warning(f"Track stuck in guild " f"{guild_id}")
+        self.bot.logger.warning(f"Track stuck in guild {guild_id}")
 
         guild_player = self.get_guild_player(guild_id)
         if guild_player is None:
