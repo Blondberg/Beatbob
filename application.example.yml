@@ -8,9 +8,9 @@ server:
 plugins:
   lavasrc:
     providers:
-    - "spotify"
-    - "ytsearch:\"%ISRC%\"" # Will be ignored if track does not have an ISRC. See https://en.wikipedia.org/wiki/International_Standard_Recording_Code
-    - "ytsearch:%QUERY%"
+      - "ytmsearch:%QUERY%"
+      - "ytsearch:%QUERY%"
+     # - "ytsearch:\"%ISRC%\"" # Will be ignored if track does not have an ISRC. See https://en.wikipedia.org/wiki/International_Standard_Recording_Code
     sources:
       spotify: true
       youtube: true

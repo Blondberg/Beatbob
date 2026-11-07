@@ -8,6 +8,7 @@ if TYPE_CHECKING:
 
 import logging
 import typing
+import asyncio
 
 import discord
 import wavelink
@@ -57,7 +58,7 @@ def same_voice_channel(interaction: discord.Interaction) -> bool:
 class Music(commands.Cog):
     def __init__(self, bot: BeatBob) -> None:
         self.bot = bot
-
+        self.guild_locks: dict[int, asyncio.Lock] = {}
         self.players: dict[int, GuildPlayer] = {}
 
     async def ensure_voice(
@@ -74,22 +75,25 @@ class Music(commands.Cog):
         if interaction.guild is None:
             return None
 
-        if interaction.guild.voice_client:
-            guild_voice = interaction.guild.voice_client
-
-            if guild_voice.channel is None:
-                return None
-
-            if voice.channel != guild_voice.channel:
+        guild_voice = interaction.guild.voice_client
+        if guild_voice is not None:
+            if not isinstance(guild_voice, wavelink.Player):
                 raise app_commands.CheckFailure(
-                    "You must be in the same voice channel as me."
+                    "An unsupported voice connection is already active."
                 )
 
-            return typing.cast(wavelink.Player, guild_voice)
+            if not guild_voice.connected:
+                await guild_voice.disconnect()
+                self.remove_player(guild_voice)
+            else:
+                if voice.channel != guild_voice.channel:
+                    raise app_commands.CheckFailure(
+                        "You must be in the same voice channel as me."
+                    )
 
-        return typing.cast(
-            wavelink.Player, await voice.channel.connect(cls=wavelink.Player)
-        )
+                return guild_voice
+
+        return await voice.channel.connect(cls=wavelink.Player)
 
     def get_guild_player(self, guild_id: int) -> GuildPlayer | None:
         wrapper = self.players.get(guild_id)
@@ -278,7 +282,7 @@ class Music(commands.Cog):
         self.bot.logger.warning(f"Track stuck in guild {guild_id}")
 
         guild_player = self.get_guild_player(guild_id)
-        if guild_player is None:
+        if guild_player is None or guild_player.player is not player:
             try:
                 await player.skip(force=True)
             except Exception:
