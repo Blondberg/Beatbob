@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING, cast
 if TYPE_CHECKING:
     from bot import BeatBob
 
-import logging
-import typing
 import asyncio
+import logging
 
 import discord
 import wavelink
@@ -593,7 +592,7 @@ class Music(commands.Cog):
         guild_player.shuffle()
 
         await interaction.followup.send(
-            embed=success_embed(title="Shuffle", text=f"Shuffled queue!")
+            embed=success_embed(title="Shuffle", text="Shuffled queue!")
         )
 
     # -------------------------
