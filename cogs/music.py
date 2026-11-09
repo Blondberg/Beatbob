@@ -1,5 +1,6 @@
 # TODO Get rid of cyclic import
 from __future__ import annotations
+from players.errors import MusicError
 
 from typing import TYPE_CHECKING, cast
 
@@ -60,9 +61,20 @@ class Music(commands.Cog):
         self.guild_locks: dict[int, asyncio.Lock] = {}
         self.players: dict[int, GuildPlayer] = {}
 
+    def get_guild_lock(self, guild_id: int) -> asyncio.Lock:
+        """Return the shared lock for this guild, creating it if needed"""
+        lock = self.guild_locks.get(guild_id)
+
+        if lock is None:
+            lock = asyncio.Lock()
+            self.guild_locks[guild_id] = lock
+
+        return lock
+
     async def ensure_voice(
         self, interaction: discord.Interaction
     ) -> wavelink.Player | None:
+        """Ensure the bot is in the same voice channel as the user"""
         if isinstance(interaction.user, discord.User):
             return None
 
@@ -165,6 +177,18 @@ class Music(commands.Cog):
 
         if isinstance(original, app_commands.CheckFailure):
             await self._send_error(interaction, "Cannot do that", str(original))
+            return
+
+        if isinstance(original, MusicError):
+            await self._send_error(interaction, "Cannot do that", str(original))
+            return
+
+        if isinstance(original, TimeoutError):
+            await self._send_error(
+                interaction,
+                "Requiest timed  out",
+                "The music service did not response in time.",
+            )
             return
 
         logger.error(
@@ -307,6 +331,39 @@ class Music(commands.Cog):
         """Ensure correct guild settings are set when a track start."""
 
     # -------------------------
+    # TRACK INACTIVE
+    # -------------------------
+    @commands.Cog.listener()
+    async def on_wavelink_inactive_player(self, player: wavelink.Player) -> None:
+        try:
+            await self.close_player(player)
+        except Exception:
+            logger.exception(
+                "Inactive player cleanup failed: guild=%s",
+                player.guild.id if player.guild else None,
+            )
+
+    async def close_player(self, player: wavelink.Player) -> None:
+        guild = player.guild
+        if guild is None:
+            return
+
+        async with self.get_guild_lock(guild.id):
+            wrapper = self.players.get(guild.id)
+
+            if wrapper is None or wrapper.player is not player:
+                return
+
+            try:
+                await wrapper.cleanup()
+            finally:
+                if guild.voice_client is not player:
+                    self.remove_player(player)
+
+            if guild.voice_client is player:
+                raise MusicError("Playback cleanup did not finish. Please retry.")
+
+    # -------------------------
     # PLAY
     # -------------------------
     @app_commands.guild_only()
@@ -314,34 +371,29 @@ class Music(commands.Cog):
     async def play(self, interaction: discord.Interaction, query: str) -> None:
         await interaction.response.defer()
 
-        player = await self.ensure_voice(interaction)
-        if not player:
-            return await interaction.followup.send(
-                embed=error_embed("Not in voice", "Join a voice channel first."),
-                ephemeral=True,
-            )
+        guild = interaction.guild
+        assert guild is not None
 
-        assert interaction.guild is not None  # Guild should be a guarantee
+        async with self.get_guild_lock(guild.id):
+            async with asyncio.timeout(20):
+                tracks = await wavelink.Playable.search(query)
 
-        tracks: wavelink.Search = await wavelink.Playable.search(query)
+            if not tracks:
+                raise app_commands.CheckFailure("No matching tracks were found.")
 
-        if not tracks:
-            return await interaction.followup.send(
-                embed=error_embed(
-                    title="Unable to find tracks",
-                    text="Could not find any tracks with that query. Please try again.",
-                ),
-                ephemeral=True,
-            )
+            player = await self.ensure_voice(interaction)
+            if player is None:
+                raise app_commands.CheckFailure("Join a voice channel first.")
 
-        guild_player: GuildPlayer = self.get_or_create_guild_player(
-            interaction.guild.id, player
-        )
+        guild_player: GuildPlayer = self.get_or_create_guild_player(guild.id, player)
 
+        # TODO: Merge duplicate code
         if isinstance(tracks, wavelink.Playlist):
-            tracks.extras = {"requested_by": interaction.user.name}
+            tracks.extras = {
+                "requested_by": interaction.user.name or interaction.user.global_name
+            }
 
-            amount_added: int = await guild_player.add_playlist(tracks)
+            amount_added: int = await guild_player.add_tracks(tracks.tracks)
             return await interaction.followup.send(
                 view=PlaylistAddedView(
                     tracks.name,
@@ -354,7 +406,7 @@ class Music(commands.Cog):
         track: wavelink.Playable = tracks[0]
         requested_by = interaction.user.global_name or interaction.user.name
         track.extras = {"requested_by": requested_by}
-        await guild_player.add_track(track)
+        await guild_player.add_tracks([track])
         await interaction.followup.send(
             view=TrackAddedView(track.title, track.uri or "", track.extras.requested_by)
         )
@@ -571,7 +623,7 @@ class Music(commands.Cog):
         )
 
     # -------------------------
-    # LOOP
+    # SHUFFLE
     # -------------------------
     @app_commands.guild_only()
     @app_commands.command(
@@ -623,6 +675,7 @@ class Music(commands.Cog):
     # PITCH
     # -------------------------
     @app_commands.guild_only()
+    @has_permissions(administrator=True)
     @app_commands.command(name="pitch", description="Change pitch.")
     @app_commands.check(same_voice_channel)
     async def pitch(
@@ -650,6 +703,7 @@ class Music(commands.Cog):
     # SPEED
     # -------------------------
     @app_commands.guild_only()
+    @has_permissions(administrator=True)
     @app_commands.command(name="speed", description="Change speed.")
     @app_commands.check(same_voice_channel)
     async def speed(
@@ -677,6 +731,7 @@ class Music(commands.Cog):
     # RATE
     # -------------------------
     @app_commands.guild_only()
+    @has_permissions(administrator=True)
     @app_commands.command(name="rate", description="Change rate.")
     @app_commands.check(same_voice_channel)
     async def rate(

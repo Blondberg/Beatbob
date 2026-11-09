@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 import logging
 import os
@@ -5,7 +6,6 @@ import platform
 
 import discord
 import wavelink
-from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -39,7 +39,7 @@ log_formatter = logging.Formatter(
 # File handler
 os.makedirs(os.path.dirname("logs/"), exist_ok=True)
 file_handler = logging.FileHandler(
-    filename=f'logs/beatbob_{datetime.datetime.now().strftime("%Y-%m-%dT%H-%M-%S")}.log',
+    filename=f"logs/beatbob_{datetime.datetime.now().strftime('%Y-%m-%dT%H-%M-%S')}.log",
     encoding="utf-8",
     mode="w",
 )
@@ -58,7 +58,7 @@ logger.addHandler(console_handler)
 class BeatBob(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        intents.message_content = True
+        intents.message_content = False
 
         self.logger = logging.getLogger("beatbob")
 
@@ -68,19 +68,35 @@ class BeatBob(commands.Bot):
             description="A mediocre music bot",
         )
 
+    async def connect_lavalink(bot: commands.Bot, node: wavelink.Node) -> None:
+        try:
+            async with asyncio.timeout(45):
+                connected = await wavelink.Pool.connect(nodes=[node], client=bot)
+
+                if node.identifier not in connected:
+                    raise RuntimeError("Lavalink connection was rejected.")
+
+                while node.status is not wavelink.NodeStatus.CONNECTED:
+                    await asyncio.sleep(0.1)
+        except BaseException:
+            await node.close(eject=True)
+            raise
+
     async def setup_hook(self) -> None:
         # Load cogs
-        for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
-            if not filename.endswith(".py") or filename.startswith("__"):
-                continue
-
-            extension_name = filename[:-3]
-
-            try:
-                await self.load_extension(f"cogs.{extension_name}")
-                self.logger.debug(f"Loaded extension '{extension_name}'")
-            except Exception:
-                self.logger.exception(f"Failed to load extension '{extension_name}'")
+        for extentsion in ("cogs.music", "cogs.owner", "cogs.helloworld"):
+            await self.load_extension(extentsion)
+        # for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
+        #     if not filename.endswith(".py") or filename.startswith("__"):
+        #         continue
+        #
+        #     extension_name = filename[:-3]
+        #
+        #     try:
+        #         await self.load_extension(f"cogs.{extension_name}")
+        #         self.logger.debug(f"Loaded extension '{extension_name}'")
+        #     except Exception:
+        #         self.logger.exception(f"Failed to load extension '{extension_name}'")
 
         # Connect Lavalink
         node = wavelink.Node(

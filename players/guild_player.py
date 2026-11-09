@@ -3,9 +3,12 @@ import logging
 
 import wavelink
 
+from players.errors import MusicError, QueueLimitReaced
 from utils.enums import AutoPlayMode, LoopMode
 
 logger = logging.getLogger("beatbob")
+
+MAX_QUEUE_TRACKS = 500
 
 
 class GuildPlayer:
@@ -23,6 +26,10 @@ class GuildPlayer:
     def current(self) -> wavelink.Playable | None:
         return self.player.current
 
+    def _ensure_active(self) -> None:
+        if self._stopping or not self.player.connected:
+            raise MusicError("This player is unavailable. Start a new session.")
+
     def set_loop_mode(self, mode: LoopMode) -> None:
         if mode == LoopMode.OFF:
             self.player.queue.mode = wavelink.QueueMode.normal
@@ -35,8 +42,23 @@ class GuildPlayer:
         self.player.queue.shuffle()
 
     async def set_volume(self, volume: int) -> None:
-        self.volume = max(0, min(volume, 100))
-        await self.player.set_volume(self.volume)
+        async with self._lock:
+            self._ensure_active()
+            bound_volume = max(0, min(volume, 100))
+            await self.player.set_volume(bound_volume)
+            self.volume = bound_volume
+
+    async def add_tracks(self, tracks: list[wavelink.Playable]) -> int:
+        async with self._lock:
+            self._ensure_active()
+
+            if self.player.queue.count + len(tracks) > MAX_QUEUE_TRACKS:
+                raise QueueLimitReaced(
+                    f"The queue can contain at most {MAX_QUEUE_TRACKS} tracks."
+                )
+            added = self.player.queue.put(tracks, atomic=True)
+            await self._advance_unlocked()
+            return added
 
     async def add_track(self, track: wavelink.Playable) -> None:
         """Adds a single track to the queue.
@@ -75,31 +97,34 @@ class GuildPlayer:
     async def play_next(self) -> None:  # TODO: is this even used?
         await self.advance()
 
+    async def _advance_unlocked(self) -> None:
+        if self._stopping:
+            raise RuntimeError("This player is stopping.")
+
+        if not self.player.connected:
+            raise RuntimeError("The voice connection is unavailable.")
+
+        # Do nothing if still playing
+        if self.player.current is not None:
+            return
+
+        try:
+            track = self.player.queue.get()
+        except wavelink.QueueEmpty:
+            return
+
+        try:
+            await self.player.play(track, volume=self.volume, paused=False)
+        except wavelink.LavalinkException:
+            self.player.queue.loaded = None
+            self.player.queue.put_at(0, track)
+            raise
+
     async def advance(self) -> None:
         async with self._lock:
-            if self._stopping:
-                raise RuntimeError("This player is stopping.")
+            await self._advance_unlocked()
 
-            if not self.player.connected:
-                raise RuntimeError("The voice connection is unavailable.")
-
-            # Do nothing if still playing
-            if self.player.current is not None:
-                return
-
-            try:
-                track = self.player.queue.get()
-            except wavelink.QueueEmpty:
-                return
-
-            try:
-                await self.player.play(track, volume=self.volume, paused=False)
-            except wavelink.LavalinkException:
-                self.player.queue.loaded = None
-                self.player.queue.put_at(0, track)
-                raise
-
-    async def skip(self, *, force: bool = False) -> wavelink.Playable | None:
+    async def skip(self, *, force: bool = True) -> wavelink.Playable | None:
         return await self.player.skip(force=force)
 
     async def stop(self) -> None:
@@ -113,7 +138,7 @@ class GuildPlayer:
             self.player.queue.reset()
             self.player.auto_queue.reset()
 
-            await self.player.skip(force=True)
+            await self.skip()
 
     async def pause(self) -> None:
         await self.player.pause(True)
