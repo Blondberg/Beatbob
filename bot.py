@@ -1,4 +1,5 @@
 import asyncio
+from jupyterlab.handlers.extension_manager_handler import extensions_handler_path
 import datetime
 import logging
 import os
@@ -58,7 +59,7 @@ logger.addHandler(console_handler)
 class BeatBob(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        intents.message_content = False
+        intents.message_content = True
 
         self.logger = logging.getLogger("beatbob")
 
