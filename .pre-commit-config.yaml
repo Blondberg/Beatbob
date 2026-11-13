@@ -1,32 +1,43 @@
 repos:
-  # Remove trailing whitespaces
+  # General checking
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: \.(po|pot|yml|yaml|json|md)$
-      - id: end-of-file-fixer
-        exclude: \.(po|pot|yml|yaml|json|md)$
-      - id: check-json
       - id: check-yaml
+      - id: check-toml
       - id: check-added-large-files
 
-  # Remove unused imports and variables
-  - repo: https://github.com/PyCQA/autoflake
-    rev: v2.3.3
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
     hooks:
-      - id: autoflake
+      - id: ruff-check # Run the linter
+        args: [--fix]
+      - id: ruff-format # Run the formatter
 
-  # Automatically sorts and groups imports
-  - repo: https://github.com/pycqa/isort
-    rev: 8.0.1
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.12.13
     hooks:
-      - id: isort
-        args: ["--profile", "black"]
+      - id: uv-lock # Make sure uv.lock is up to date
+      - id: uv-export # Sync requirements.txt with uv.lock
 
-  # Format with black
-  - repo: https://github.com/psf/black
-    rev: 26.5.1
+  # - repo: local
+  #   hooks:
+  #     # Run pytest
+  #     - id: pytest
+  #       name: pytest
+  #       entry: uv run pytest tests
+  #       language: system
+  #       types: [python]
+  #       args: [-v]
+  #       pass_filenames: false
+  #       always_run: true
+
+  - repo: local
     hooks:
-      - id: black
-        exclude : \.(po|pot|yml|yaml|json|md)$
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src
+        language: system
+        types: [python]
+        pass_filenames: false

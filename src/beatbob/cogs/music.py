@@ -1,25 +1,27 @@
 # TODO Get rid of cyclic import
 from __future__ import annotations
-from players.errors import MusicError
 
 from typing import TYPE_CHECKING, cast
 
+from discord import app_commands
+from discord.app_commands.checks import has_permissions
+
+from beatbob.players.errors import MusicError
+
 if TYPE_CHECKING:
-    from bot import BeatBob
+    from beatbob.bot import BeatBob
 
 import asyncio
 import logging
 
 import discord
 import wavelink
-from discord import app_commands
-from discord.app_commands.checks import has_permissions
 from discord.ext import commands
 
-from players.guild_player import GuildPlayer
-from utils.embeds import error_embed, success_embed
-from utils.enums import AutoPlayMode, LoopMode
-from utils.views import (
+from beatbob.players.guild_player import GuildPlayer
+from beatbob.utils.embeds import error_embed, success_embed
+from beatbob.utils.enums import AutoPlayMode, LoopMode
+from beatbob.utils.views import (
     NowPlayingView,
     PlaylistAddedView,
     QueuedView,

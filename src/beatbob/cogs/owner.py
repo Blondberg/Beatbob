@@ -3,6 +3,7 @@ from typing import cast
 
 import discord
 from discord import app_commands
+from discord.abc import User
 from discord.ext import commands
 
 logger = logging.getLogger("beatbob")
@@ -10,7 +11,8 @@ logger = logging.getLogger("beatbob")
 
 async def is_bot_owner(interaction: discord.Interaction) -> bool:
     bot = cast(commands.Bot, interaction.client)
-    if await bot.is_owner(interaction.user):
+    member = cast(User, interaction.user)
+    if await bot.is_owner(member):
         return True
 
     raise app_commands.CheckFailure("Only the bot owner can use this command.")

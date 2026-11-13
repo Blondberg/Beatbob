@@ -31,6 +31,5 @@ Lavalink.jar
 
 .pre-commit-config.yaml
 .vscode/
-README.md
 LICENSE
 tests/

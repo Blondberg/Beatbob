@@ -1,0 +1,62 @@
+# Project meta-data
+[project]
+name = "beatbob"
+version = "0.1.0"
+description = "The mediocre Discord music bot."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "discord-py[voice]>=2.7.1",
+    "dotenv>=0.9.9",
+    "wavelink>=3.5.2",
+]
+
+[project.scripts]
+app = "beatbob.bot:main"
+
+# Dependencies for development
+[dependency-groups]
+dev = [
+  "mypy",
+  "pre-commit",
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+]
+
+# System and module used for building
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13"]
+build-backend = "uv_build"
+
+# Mypy
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+pretty = true
+files = ["src"]
+
+# Ruff used for linting and formatting
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+extend-select = [
+  "B",  # flake8-bugbear,
+  "I"  # Isort
+]
+ignore = ["E501", "DTZ005"]  # Don't enforce line-length violations
+
+unfixable = ["B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.uv]
+required-version = ">=0.12.13"
+
+[tool.ty.environment]
+root = ["./src"]

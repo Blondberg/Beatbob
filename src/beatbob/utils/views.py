@@ -50,7 +50,6 @@ def progress_bar(position_ms: int, duration_ms: int, length: int = 30) -> str:
 
 
 class NowPlayingView(discord.ui.LayoutView):
-
     def __init__(
         self,
         now_playing: wavelink.Playable,
@@ -119,7 +118,7 @@ class QueuedView(discord.ui.LayoutView):
             self.add_item(
                 discord.ui.Container(
                     discord.ui.TextDisplay(
-                        content=f"Queue is currently empty. Add more songs with `/play`!"
+                        content="Queue is currently empty. Add more songs with `/play`!"
                     ),
                     accent_color=discord.Color.red(),
                 )
@@ -166,8 +165,7 @@ class QueuedView(discord.ui.LayoutView):
             discord.ui.Separator(),
             discord.ui.TextDisplay(
                 content=(
-                    f"### Queue\n{queue_string}\n"
-                    f"Page {self.page_number}/{total_pages}"
+                    f"### Queue\n{queue_string}\nPage {self.page_number}/{total_pages}"
                     if len(queue_string) > 1
                     else "No additional songs in queue."
                 )

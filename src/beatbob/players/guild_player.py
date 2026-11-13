@@ -3,8 +3,8 @@ import logging
 
 import wavelink
 
-from players.errors import MusicError, QueueLimitReaced
-from utils.enums import AutoPlayMode, LoopMode
+from beatbob.players.errors import MusicError, QueueLimitReaced
+from beatbob.utils.enums import AutoPlayMode, LoopMode
 
 logger = logging.getLogger("beatbob")
 

@@ -1,5 +1,4 @@
 import asyncio
-from jupyterlab.handlers.extension_manager_handler import extensions_handler_path
 import datetime
 import logging
 import os
@@ -59,7 +58,7 @@ logger.addHandler(console_handler)
 class BeatBob(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
-        intents.message_content = True
+        intents.message_content = False
 
         self.logger = logging.getLogger("beatbob")
 
@@ -85,7 +84,11 @@ class BeatBob(commands.Bot):
 
     async def setup_hook(self) -> None:
         # Load cogs
-        for extentsion in ("cogs.music", "cogs.owner", "cogs.helloworld"):
+        for extentsion in (
+            "beatbob.cogs.music",
+            "beatbob.cogs.owner",
+            "beatbob.cogs.helloworld",
+        ):
             await self.load_extension(extentsion)
         # for filename in os.listdir(os.path.join(os.path.dirname(__file__), "cogs")):
         #     if not filename.endswith(".py") or filename.startswith("__"):
@@ -125,5 +128,10 @@ class BeatBob(commands.Bot):
 
 
 if __name__ == "__main__":
+    bot = BeatBob()
+    bot.run(require_setting("DISCORD_TOKEN", DISCORD_TOKEN))
+
+
+def main() -> None:
     bot = BeatBob()
     bot.run(require_setting("DISCORD_TOKEN", DISCORD_TOKEN))
